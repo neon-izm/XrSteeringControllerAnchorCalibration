@@ -1,0 +1,30 @@
+{
+  "name": "com.neon-izm.xr-steering-controller-anchor-calibration",
+  "version": "0.1.0",
+  "displayName": "XR Steering Controller Anchor Calibration",
+  "description": "Estimate a rigid ModelView transform from hand-tracking arc points to align with a known CG handle pose (MSAC 3D circle fitting).",
+  "unity": "6000.0",
+  "author": {
+    "name": "neon-izm"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/neon-izm/XrSteeringControllerAnchorCalibration.git",
+    "directory": "Packages/com.neon-izm.xr-steering-controller-anchor-calibration"
+  },
+  "license": "MIT",
+  "keywords": [
+    "xr",
+    "calibration",
+    "hand-tracking",
+    "circle-fitting",
+    "msac"
+  ],
+  "samples": [
+    {
+      "displayName": "Calibration Sample",
+      "description": "Sample scene and Inspector workflow for offline calibration testing.",
+      "path": "Samples~/CalibrationSample"
+    }
+  ]
+}

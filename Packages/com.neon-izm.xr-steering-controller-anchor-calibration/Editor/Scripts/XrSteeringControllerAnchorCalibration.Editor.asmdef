@@ -1,0 +1,18 @@
+{
+    "name": "XrSteeringControllerAnchorCalibration.Editor",
+    "rootNamespace": "XrSteeringControllerAnchorCalibration.Editor",
+    "references": [
+        "XrSteeringControllerAnchorCalibration.Runtime"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

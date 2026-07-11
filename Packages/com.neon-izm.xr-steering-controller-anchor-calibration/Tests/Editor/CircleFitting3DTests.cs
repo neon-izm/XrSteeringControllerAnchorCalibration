@@ -12,16 +12,14 @@ namespace XrSteeringControllerAnchorCalibration.Tests
         private const float AngleToleranceDeg = 2f;
 
         [Test]
-        public void Circle3D_ExposesPositionAndRollZeroRotation()
+        public void Circle3D_ExposesPositionAndRotation()
         {
-            var circle = Circle3D.FromPose(
-                new Vector3(1f, 2f, 3f),
-                Quaternion.Euler(30f, 45f, 90f),
-                0.15f);
+            var rotation = Quaternion.Euler(30f, 45f, 90f);
+            var circle = Circle3D.FromPose(new Vector3(1f, 2f, 3f), rotation, 0.15f);
 
             Assert.That(circle.Position, Is.EqualTo(circle.Center));
             Assert.That(circle.Rotation, Is.EqualTo(circle.Rot));
-            Assert.That(circle.Rotation.eulerAngles.z, Is.EqualTo(0f).Within(0.01f));
+            Assert.That(circle.Rotation, Is.EqualTo(rotation));
         }
 
         [Test]

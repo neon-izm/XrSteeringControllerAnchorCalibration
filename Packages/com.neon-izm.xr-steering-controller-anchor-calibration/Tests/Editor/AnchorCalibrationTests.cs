@@ -189,7 +189,7 @@ namespace XrSteeringControllerAnchorCalibration.Tests
             var targetHandle = new CgHandlePose(new Vector3(0.5f, 1.2f, -0.2f), Quaternion.Euler(10f, 55f, 0f));
             var headPose = CreateHeadBehindHandle(center, rotation);
 
-            var settingsA = ArcPointGenerator.Settings.Default;
+            var settingsA = ArcGenerationSettings.Default;
             settingsA.RandomSeed = 7;
             var arcA = ArcPointGenerator.Generate(center, rotation, 0.15f, settingsA);
 

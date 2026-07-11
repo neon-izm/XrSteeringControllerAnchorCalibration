@@ -23,7 +23,7 @@
   "samples": [
     {
       "displayName": "Calibration Sample",
-      "description": "Sample scene and Inspector workflow for offline calibration testing.",
+      "description": "Sample scene, scripts, and Inspector workflow for offline calibration testing.",
       "path": "Samples~/CalibrationSample"
     }
   ]

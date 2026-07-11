@@ -79,7 +79,7 @@ Vector3 cgPoint = AnchorCalibration.WorldToCg(worldPoint, modelView);
 
 パッケージ導入後、**Package Manager** で **XR Steering Controller Anchor Calibration** を選び、Samples から **Calibration Sample** を Import してください。
 
-本リポジトリでは `Assets/Calibration/Runtime/Scenes/CalibrationSample.unity` でも試せます。
+本リポジトリでは `Assets/CalibrationSample/CalibrationSample.unity` でも試せます。
 
 サンプル内容:
 

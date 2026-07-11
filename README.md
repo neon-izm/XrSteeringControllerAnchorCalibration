@@ -75,13 +75,17 @@ Vector3 cgPoint = AnchorCalibration.WorldToCg(worldPoint, modelView);
 
 ## Sample
 
-After installing the package, open **Package Manager**, select **XR Steering Controller Anchor Calibration**, and import the **Calibration Sample** under Samples.
+After installing the package, open **Package Manager**, select **XR Steering Controller Anchor Calibration**, and import the **Calibration Sample** under Samples. That imports the sample scripts and scene into your project.
 
-This repository also ships a scene at `Assets/Calibration/Runtime/Scenes/CalibrationSample.unity` for local development.
+This development repository keeps the same sample under `Assets/CalibrationSample/` for local work:
+
+- Scene: `Assets/CalibrationSample/CalibrationSample.unity`
+- Runtime scripts: `Assets/CalibrationSample/Runtime/Scripts/`
+- Editor scripts: `Assets/CalibrationSample/Editor/Scripts/`
 
 The sample provides:
 
-- `SteeringAnchorCalibrationSample` component with **CgHandle**, **Head**, and arc center references
+- `SteeringAnchorCalibrationSample` component (`XrSteeringControllerAnchorCalibration.Sample`) with **CgHandle**, **Head**, and arc center references
 - Inspector: **Generate Sample Points** → **Run Calibration** → **Clear**
 - Scene View gizmos: CG handle axes, head, user-forward arrow, fitted/mapped circles, inliers
 - After calibration: red **Head (Mapped)** clone at the ModelView-mapped head pose (Editor)
@@ -92,10 +96,15 @@ The sample provides:
 ```
 Packages/com.neon-izm.xr-steering-controller-anchor-calibration/
 ├── package.json
-├── Runtime/          # Core library
-├── Editor/           # Sample inspector & scene setup utilities
+├── Runtime/          # Core library (AnchorCalibration, circle fitting)
 ├── Tests/Editor/     # Edit Mode tests
-└── Samples~/         # Optional sample scene (import from Package Manager)
+└── Samples~/         # Optional sample (import from Package Manager)
+
+Assets/CalibrationSample/   # Local dev copy of the sample (not shipped in the UPM package)
+├── CalibrationSample.unity
+├── Runtime/Scripts/
+├── Runtime/SampleCar/
+└── Editor/Scripts/
 ```
 
 ## Tests

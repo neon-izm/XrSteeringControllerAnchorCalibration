@@ -181,7 +181,7 @@ namespace XrSteeringControllerAnchorCalibration
                 ys[i] = Vector3.Dot(centered, v);
             }
 
-            var (xc, yc, radius) = FitCircle2D(xs, ys);
+            var (xc, yc, radius) = CircleFit2D.Fit(xs, ys);
             var center3D = centroid + xc * u + yc * v;
 
             return new Circle3D(center3D, RotationFromNormal(normal), radius);
@@ -205,58 +205,6 @@ namespace XrSteeringControllerAnchorCalibration
         public static Quaternion EnforceZeroRoll(Quaternion rotation)
         {
             return RotationFromNormal(rotation * Vector3.forward);
-        }
-
-        internal static (float xc, float yc, float radius) FitCircle2D(float[] xs, float[] ys)
-        {
-            var n = xs.Length;
-            var sxx = 0f;
-            var syy = 0f;
-            var sxy = 0f;
-            var sx = 0f;
-            var sy = 0f;
-            var sb = 0f;
-            var sxx2y2 = 0f;
-            var syy2x2 = 0f;
-            var s1 = 0f;
-
-            for (var i = 0; i < n; i++)
-            {
-                var x = xs[i];
-                var y = ys[i];
-                var b = x * x + y * y;
-
-                sxx += x * x;
-                syy += y * y;
-                sxy += x * y;
-                sx += x;
-                sy += y;
-                sb += b;
-                sxx2y2 += x * b;
-                syy2x2 += y * b;
-                s1 += 1f;
-            }
-
-            var ata = new Matrix3x3(
-                sxx, sxy, sx,
-                sxy, syy, sy,
-                sx, sy, s1);
-            var atb = new Vector3(sxx2y2, syy2x2, sb);
-
-            if (!SymmetricLinearSolver3x3.TrySolve(ata, atb, out var c))
-            {
-                throw new InvalidOperationException("2D circle fit failed: singular system.");
-            }
-
-            var xc = c.x * 0.5f;
-            var yc = c.y * 0.5f;
-            var radiusSq = c.z + xc * xc + yc * yc;
-            if (radiusSq <= 0f)
-            {
-                throw new InvalidOperationException("2D circle fit failed: non-positive radius.");
-            }
-
-            return (xc, yc, Mathf.Sqrt(radiusSq));
         }
 
         private static int[] CollectInliers(IReadOnlyList<Vector3> points, Circle3D circle, float threshold)

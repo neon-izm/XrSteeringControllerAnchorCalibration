@@ -1,6 +1,6 @@
 {
   "name": "com.neon-izm.xr-steering-controller-anchor-calibration",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "displayName": "XR Steering Controller Anchor Calibration",
   "description": "Estimate a rigid ModelView transform from hand-tracking arc points to align with a known CG handle pose (MSAC 3D circle fitting).",
   "unity": "6000.0",

@@ -28,9 +28,10 @@ namespace XrSteeringControllerAnchorCalibration.Tests
             float gaussianSigma = 0.002f,
             float outlierMinOffset = 0.01f,
             float outlierMaxOffset = 0.05f,
+            float arcHalfAngleDeg = 45f,
             int? seed = null)
         {
-            var settings = new ArcPointGenerator.Settings
+            var settings = new ArcGenerationSettings
             {
                 PointCount = pointCount,
                 OutlierRatio = outlierRatio,
@@ -38,9 +39,33 @@ namespace XrSteeringControllerAnchorCalibration.Tests
                 OutlierMinOffsetMeters = outlierMinOffset,
                 OutlierMaxOffsetMeters = outlierMaxOffset,
                 RandomSeed = seed ?? 42,
+                ArcHalfAngleDeg = arcHalfAngleDeg,
             };
 
             var generated = ArcPointGenerator.GenerateRandom(settings);
+            return new GeneratedArcData(generated.Points, generated.GroundTruth);
+        }
+
+        public static GeneratedArcData GenerateArcAt(
+            Vector3 center,
+            Quaternion rotation,
+            float radius,
+            int pointCount = 120,
+            float outlierRatio = 0f,
+            float gaussianSigma = 0.002f,
+            float arcHalfAngleDeg = 45f,
+            int? seed = null)
+        {
+            var settings = new ArcGenerationSettings
+            {
+                PointCount = pointCount,
+                OutlierRatio = outlierRatio,
+                GaussianSigmaMeters = gaussianSigma,
+                RandomSeed = seed ?? 42,
+                ArcHalfAngleDeg = arcHalfAngleDeg,
+            };
+
+            var generated = ArcPointGenerator.Generate(center, rotation, radius, settings);
             return new GeneratedArcData(generated.Points, generated.GroundTruth);
         }
     }

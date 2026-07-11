@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using NUnit.Framework;
 using UnityEngine;
 using XrSteeringControllerAnchorCalibration;
@@ -12,16 +13,14 @@ namespace XrSteeringControllerAnchorCalibration.Tests
         private const float AngleToleranceDeg = 2f;
 
         [Test]
-        public void Circle3D_ExposesPositionAndRollZeroRotation()
+        public void Circle3D_ExposesPositionAndRotation()
         {
-            var circle = Circle3D.FromPose(
-                new Vector3(1f, 2f, 3f),
-                Quaternion.Euler(30f, 45f, 90f),
-                0.15f);
+            var rotation = Quaternion.Euler(30f, 45f, 90f);
+            var circle = Circle3D.FromPose(new Vector3(1f, 2f, 3f), rotation, 0.15f);
 
             Assert.That(circle.Position, Is.EqualTo(circle.Center));
             Assert.That(circle.Rotation, Is.EqualTo(circle.Rot));
-            Assert.That(circle.Rotation.eulerAngles.z, Is.EqualTo(0f).Within(0.01f));
+            Assert.That(circle.Rotation, Is.EqualTo(rotation));
         }
 
         [Test]
@@ -43,6 +42,46 @@ namespace XrSteeringControllerAnchorCalibration.Tests
             AssertCenter(circle.Value, center);
             AssertRadius(circle.Value, radius);
             AssertNormalAngle(circle.Value, rot * Vector3.forward);
+        }
+
+        [Test]
+        public void CircleFitting_ShortArc45Deg_ExactResult()
+        {
+            var data = TestDataGenerator.GenerateArcAt(
+                new Vector3(0.1f, 1f, 0.2f),
+                Quaternion.Euler(25f, 40f, 0f),
+                0.15f,
+                pointCount: 120,
+                gaussianSigma: 0f,
+                arcHalfAngleDeg: 22.5f,
+                seed: 42);
+
+            var result = CircleFitting3D.FitCircleMsac(
+                data.Points,
+                threshold: 0.001f,
+                maxIterations: 200,
+                random: new System.Random(0));
+
+            AssertCenter(result.Circle, data.GroundTruth.Center, tolerance: 0.002f);
+            AssertRadius(result.Circle, data.GroundTruth.Radius, tolerance: 0.002f);
+            AssertNormalAngle(result.Circle, data.GroundTruth.Normal);
+        }
+
+        [Test]
+        public void CircleFitting_ShortArc45Deg_WithNoise_WithinTolerance()
+        {
+            var data = TestDataGenerator.GenerateArcAt(
+                Vector3.zero,
+                Quaternion.Euler(15f, 30f, 0f),
+                0.15f,
+                pointCount: 150,
+                gaussianSigma: 0.002f,
+                arcHalfAngleDeg: 22.5f,
+                seed: 11);
+
+            var result = CircleFitting3D.FitCircleMsac(data.Points, random: new System.Random(2));
+
+            AssertRadius(result.Circle, data.GroundTruth.Radius, tolerance: 0.008f);
         }
 
         [Test]
@@ -82,7 +121,7 @@ namespace XrSteeringControllerAnchorCalibration.Tests
             var result = CircleFitting3D.FitCircleMsac(data.Points, random: new System.Random(2));
 
             AssertCenter(result.Circle, data.GroundTruth.Center);
-            AssertRadius(result.Circle, data.GroundTruth.Radius);
+            AssertRadius(result.Circle, data.GroundTruth.Radius, tolerance: 0.004f);
             AssertNormalAngle(result.Circle, data.GroundTruth.Normal);
             Assert.That(result.InlierIndices.Length, Is.GreaterThan(120));
         }

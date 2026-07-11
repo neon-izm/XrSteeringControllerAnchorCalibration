@@ -4,7 +4,7 @@ namespace XrSteeringControllerAnchorCalibration
 {
     /// <summary>
     /// 3D空間上の円。ハンドル型コントローラの形状近似に使用する。
-    /// 姿勢は roll=0 制約付き（回転軸 = forward = 円面法線）。
+    /// 姿勢の forward = 円面法線。
     /// </summary>
     public readonly struct Circle3D
     {
@@ -19,7 +19,7 @@ namespace XrSteeringControllerAnchorCalibration
         public Circle3D(Vector3 center, Quaternion rot, float radius)
         {
             Center = center;
-            Rot = CircleFitting3D.EnforceZeroRoll(rot);
+            Rot = rot;
             Radius = radius;
         }
 
@@ -51,6 +51,7 @@ namespace XrSteeringControllerAnchorCalibration
 
     /// <summary>
     /// CG ハンドルモデルの既知姿勢。半径は未知のため含めない。
+    /// Forward = 車の進行方向（Front）。
     /// </summary>
     public readonly struct CgHandlePose
     {
@@ -62,12 +63,32 @@ namespace XrSteeringControllerAnchorCalibration
         public CgHandlePose(Vector3 position, Quaternion rotation)
         {
             Position = position;
-            Rotation = CircleFitting3D.EnforceZeroRoll(rotation);
+            Rotation = rotation;
         }
 
         public static CgHandlePose FromTransform(Transform transform)
         {
             return new CgHandlePose(transform.position, transform.rotation);
+        }
+    }
+
+    /// <summary>
+    /// HMD / 頭の世界座標姿勢。前後・roll 解決に使用する。
+    /// </summary>
+    public readonly struct HeadPose
+    {
+        public readonly Vector3 Position;
+        public readonly Quaternion Rotation;
+
+        public HeadPose(Vector3 position, Quaternion rotation)
+        {
+            Position = position;
+            Rotation = rotation;
+        }
+
+        public static HeadPose FromTransform(Transform transform)
+        {
+            return new HeadPose(transform.position, transform.rotation);
         }
     }
 

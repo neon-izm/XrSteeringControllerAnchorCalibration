@@ -75,6 +75,122 @@ Vector3 cgPoint = AnchorCalibration.WorldToCg(worldPoint, modelView);
 4. 写像後の頭が運転席側になる候補を選択
 5. CG ハンドル軸まわりの余分な roll を除去
 
+### 水平維持（XR Origin 適用時）
+
+`Calibrate` の出力は **ModelView のみ**で、ワールド水平制約は含みません。ModelView を XR トラッキング原点へ適用したあと、`PoseConstraints` で水平を維持しつつ CG ハンドルのワールド位置を pivot として固定してください。
+
+| API | 目的 |
+|-----|------|
+| `RemoveHandleLocalRoll` | キャリブ時に **CG ハンドル forward 軸**まわりの twist を除去 |
+| `RigCalibrationOffset` | `ModelView` から rig offset を計算し **XROrigin** に適用（CG コンテンツはシーン固定） |
+| `PoseConstraints.RemoveRoll` | ModelView 適用後、原点 forward を保ち **ワールド roll** を除去 |
+| `PoseConstraints.ComputeTrackingOriginPose` | `CalibrationOptions`（デフォルト `RemoveRoll`）を pivot 付きで適用 |
+
+#### 典型的なシーン構成（XR Interaction Toolkit の `XRRig` + CG）
+
+車両 / ステアリングホイールは **シーン固定**のまま、キャリブ後に動かすのは **XR Origin のみ**:
+
+```
+Scene
+├── XR Origin                 ← XROrigin コンポーネント（Samples / XRI Starter Assets）
+│   └── Camera Offset
+│       └── Main Camera
+└── VehicleRoot               ← CG コンテンツのルート（シーン固定）
+    └── SteeringWheel         ← 既知 CG ハンドルの Transform
+```
+
+Inspector で割り当て:
+
+- `xrOrigin` → `XROrigin` の付いたルート（prefab 内の `XR Origin`）
+- `vehicleRoot` → ステアリングモデルの親
+- `cgHandle` → ステアリングホイール Transform（`Calibrate` の `CgHandlePose` と水平制約 pivot の両方に使用）
+
+#### コピペ用サンプル
+
+```csharp
+using Unity.XR.CoreUtils;
+using UnityEngine;
+using XrSteeringControllerAnchorCalibration;
+
+public sealed class SteeringCalibrationApply : MonoBehaviour
+{
+    [SerializeField] XROrigin xrOrigin;
+    [SerializeField] Transform vehicleRoot;
+    [SerializeField] Transform cgHandle;
+
+    Vector3? sessionOriginPosition;
+    Quaternion? sessionOriginRotation;
+
+    public void Apply(CalibrationResult result)
+    {
+        CaptureSessionOriginIfNeeded();
+
+        RigCalibrationOffset.ApplyCalibrationToTrackingOrigin(
+            result.ModelView,
+            xrOrigin.transform,
+            vehicleRoot,
+            cgHandle,
+            CalibrationOptions.Default);
+    }
+
+    public void ResetCalibrationOffset()
+    {
+        if (!sessionOriginPosition.HasValue || !sessionOriginRotation.HasValue)
+        {
+            return;
+        }
+
+        xrOrigin.transform.SetPositionAndRotation(
+            sessionOriginPosition.Value,
+            sessionOriginRotation.Value);
+    }
+
+    void CaptureSessionOriginIfNeeded()
+    {
+        if (sessionOriginPosition.HasValue)
+        {
+            return;
+        }
+
+        sessionOriginPosition = xrOrigin.transform.position;
+        sessionOriginRotation = xrOrigin.transform.rotation;
+    }
+}
+```
+
+`RigCalibrationOffset.ApplyCalibrationToTrackingOrigin` の内部処理:
+
+1. `ModelView` と `vehicleRoot` / `cgHandle` から `rigOffset` を計算
+2. `proposedOrigin = rigOffset * 現在の原点`
+3. `PoseConstraints.ComputeTrackingOriginPose(..., pivot = cgHandle.position, RemoveRoll)`
+
+ステップ 2–3 を分けて確認・カスタマイズする場合:
+
+```csharp
+Matrix4x4 modelView = result.ModelView;
+var origin = xrOrigin.transform;
+
+RigCalibrationOffset.TryComputeProposedOriginPose(
+    modelView,
+    origin,
+    vehicleRoot,
+    cgHandle,
+    out var proposedPosition,
+    out var proposedRotation);
+
+PoseConstraints.ComputeTrackingOriginPose(
+    proposedPosition,
+    proposedRotation,
+    cgHandle.position,
+    CalibrationOptions.Default,
+    out var originPosition,
+    out var originRotation);
+
+origin.SetPositionAndRotation(originPosition, originRotation);
+```
+
+`TrackingHorizonConstraint`: `None`, `RemoveRoll`（HMD 向け推奨）, `RemovePitch`, `RemovePitchAndRoll`。pivot 補正は `RemoveHandleLocalRoll` と同型で、回転変更後も原点から pivot への局所オフセットが保たれます。
+
 ## サンプル
 
 パッケージ導入後、**Package Manager** で **XR Steering Controller Anchor Calibration** を選び、Samples から **Calibration Sample** を Import してください。
@@ -94,8 +210,7 @@ Vector3 cgPoint = AnchorCalibration.WorldToCg(worldPoint, modelView);
 ```
 Packages/com.neon-izm.xr-steering-controller-anchor-calibration/
 ├── package.json
-├── Runtime/          # コアライブラリ
-├── Editor/           # サンプル用 Inspector 等
+├── Runtime/          # コアライブラリ（AnchorCalibration, PoseConstraints, RigCalibrationOffset 等）
 ├── Tests/Editor/     # Edit Mode テスト
 └── Samples~/         # 任意インポートのサンプルシーン
 ```

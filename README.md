@@ -73,6 +73,122 @@ Vector3 cgPoint = AnchorCalibration.WorldToCg(worldPoint, modelView);
 4. Select candidate where mapped head is on the driver-seat side
 5. Remove handle-local roll relative to `targetHandle`
 
+### Horizon constraint (XR Origin application)
+
+`Calibrate` returns **ModelView only**; it does not apply world-horizon constraints. Apply `ModelView` to the XR tracking origin, then use `PoseConstraints` so the rig stays level while the CG handle world position stays fixed.
+
+| API | Purpose |
+|-----|---------|
+| `RemoveHandleLocalRoll` | Removes twist around the **CG handle forward** axis during calibration |
+| `RigCalibrationOffset` | Computes rig offset from `ModelView` and applies it to **XROrigin** (content stays scene-fixed) |
+| `PoseConstraints.RemoveRoll` | Removes **world roll** around the origin forward after applying ModelView |
+| `PoseConstraints.ComputeTrackingOriginPose` | Applies `CalibrationOptions` (default: `RemoveRoll`) with pivot at the CG handle world position |
+
+#### Typical scene (XR Interaction Toolkit `XRRig` + CG content)
+
+Keep the vehicle / steering wheel **scene-fixed**. Move only **XR Origin** after calibration:
+
+```
+Scene
+├── XR Origin                 ← XROrigin component (from Samples / XRI Starter Assets)
+│   └── Camera Offset
+│       └── Main Camera
+└── VehicleRoot               ← scene-fixed CG content root
+    └── SteeringWheel         ← known CG handle Transform
+```
+
+Assign in Inspector:
+
+- `xrOrigin` → root object with `XROrigin` (`XR Origin` in the prefab)
+- `vehicleRoot` → parent of the steering wheel model
+- `cgHandle` → steering wheel Transform (used for `CgHandlePose` during `Calibrate`, and as horizon pivot)
+
+#### Copy-paste example
+
+```csharp
+using Unity.XR.CoreUtils;
+using UnityEngine;
+using XrSteeringControllerAnchorCalibration;
+
+public sealed class SteeringCalibrationApply : MonoBehaviour
+{
+    [SerializeField] XROrigin xrOrigin;
+    [SerializeField] Transform vehicleRoot;
+    [SerializeField] Transform cgHandle;
+
+    Vector3? sessionOriginPosition;
+    Quaternion? sessionOriginRotation;
+
+    public void Apply(CalibrationResult result)
+    {
+        CaptureSessionOriginIfNeeded();
+
+        RigCalibrationOffset.ApplyCalibrationToTrackingOrigin(
+            result.ModelView,
+            xrOrigin.transform,
+            vehicleRoot,
+            cgHandle,
+            CalibrationOptions.Default);
+    }
+
+    public void ResetCalibrationOffset()
+    {
+        if (!sessionOriginPosition.HasValue || !sessionOriginRotation.HasValue)
+        {
+            return;
+        }
+
+        xrOrigin.transform.SetPositionAndRotation(
+            sessionOriginPosition.Value,
+            sessionOriginRotation.Value);
+    }
+
+    void CaptureSessionOriginIfNeeded()
+    {
+        if (sessionOriginPosition.HasValue)
+        {
+            return;
+        }
+
+        sessionOriginPosition = xrOrigin.transform.position;
+        sessionOriginRotation = xrOrigin.transform.rotation;
+    }
+}
+```
+
+`RigCalibrationOffset.ApplyCalibrationToTrackingOrigin` does:
+
+1. `rigOffset` from `ModelView` + `vehicleRoot` / `cgHandle` transforms
+2. `proposedOrigin = rigOffset * currentOrigin`
+3. `PoseConstraints.ComputeTrackingOriginPose(..., pivot = cgHandle.position, RemoveRoll)`
+
+To inspect or customize step 2–3:
+
+```csharp
+Matrix4x4 modelView = result.ModelView;
+var origin = xrOrigin.transform;
+
+RigCalibrationOffset.TryComputeProposedOriginPose(
+    modelView,
+    origin,
+    vehicleRoot,
+    cgHandle,
+    out var proposedPosition,
+    out var proposedRotation);
+
+PoseConstraints.ComputeTrackingOriginPose(
+    proposedPosition,
+    proposedRotation,
+    cgHandle.position,
+    CalibrationOptions.Default,
+    out var originPosition,
+    out var originRotation);
+
+origin.SetPositionAndRotation(originPosition, originRotation);
+```
+
+`TrackingHorizonConstraint`: `None`, `RemoveRoll` (recommended for HMD), `RemovePitch`, `RemovePitchAndRoll`. Pivot correction mirrors `RemoveHandleLocalRoll`: local offset from origin to pivot is preserved when rotation changes.
+
 ## Sample
 
 After installing the package, open **Package Manager**, select **XR Steering Controller Anchor Calibration**, and import the **Calibration Sample** under Samples. That imports the sample scripts and scene into your project.
@@ -96,7 +212,7 @@ The sample provides:
 ```
 Packages/com.neon-izm.xr-steering-controller-anchor-calibration/
 ├── package.json
-├── Runtime/          # Core library (AnchorCalibration, circle fitting)
+├── Runtime/          # Core library (AnchorCalibration, PoseConstraints, RigCalibrationOffset)
 ├── Tests/Editor/     # Edit Mode tests
 └── Samples~/         # Optional sample (import from Package Manager)
 

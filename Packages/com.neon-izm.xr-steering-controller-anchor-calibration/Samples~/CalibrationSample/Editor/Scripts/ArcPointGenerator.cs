@@ -33,7 +33,7 @@ namespace XrSteeringControllerAnchorCalibration.Sample.Editor
             }
 
             var random = new System.Random(settings.RandomSeed);
-            var rollZeroRotation = CircleFitting3D.EnforceZeroRoll(rotation);
+            var rollZeroRotation = CircleFitting3D.RotationFromNormal(rotation * Vector3.forward);
             var right = rollZeroRotation * Vector3.right;
             var up = rollZeroRotation * Vector3.up;
             var halfAngleDeg = settings.ArcHalfAngleDeg > 0f ? settings.ArcHalfAngleDeg : 45f;

@@ -148,7 +148,7 @@ namespace XrSteeringControllerAnchorCalibration.Sample
                 estimatedCenterWorld = fit.Circle.Position;
                 estimatedRotationWorld = fit.Circle.Rotation;
                 estimatedRadiusWorld = fit.Circle.Radius;
-                lastOrientedCircle = AnchorCalibration.OrientCircleWithHeadHint(fit.Circle, headPose);
+                lastOrientedCircle = AnchorCalibration.OrientCircleWithWorldUp(fit.Circle);
                 storedModelView = AnchorCalibration.ComputeCalibratedModelView(
                     fit.Circle,
                     targetHandle,

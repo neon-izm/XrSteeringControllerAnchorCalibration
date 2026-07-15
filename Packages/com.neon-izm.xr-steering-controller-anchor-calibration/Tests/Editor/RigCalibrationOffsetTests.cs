@@ -9,74 +9,44 @@ namespace XrSteeringControllerAnchorCalibration.Tests
         const float Tolerance = 1e-3f;
 
         [Test]
-        public void ApplyCalibrationToTrackingOrigin_MovesOrigin_PreservesCgHandleWorldPosition()
+        public void ApplyContentRootAlignment_MovesContent_LeavesOrigin_HandleMatchesEstimated()
         {
             var contentRoot = new GameObject("ContentRoot").transform;
             var cgHandle = new GameObject("CgHandle").transform;
             var trackingOrigin = new GameObject("TrackingOrigin").transform;
             cgHandle.SetParent(contentRoot, false);
-            cgHandle.localPosition = new Vector3(0.2f, 0.9f, 0.45f);
-            cgHandle.localRotation = Quaternion.Euler(10f, 25f, 0f);
-            contentRoot.SetPositionAndRotation(new Vector3(1f, 0f, 2f), Quaternion.Euler(0f, 30f, 0f));
-            trackingOrigin.SetPositionAndRotation(new Vector3(0f, 1.6f, 0f), Quaternion.Euler(5f, -15f, 2f));
+            cgHandle.localPosition = new Vector3(0.1f, 0.85f, 0.4f);
+            cgHandle.localRotation = Quaternion.Euler(35f, 10f, 20f);
+            contentRoot.SetPositionAndRotation(Vector3.zero, Quaternion.identity);
+            trackingOrigin.SetPositionAndRotation(new Vector3(0f, 1.4f, 0f), Quaternion.identity);
 
             var targetHandle = CgHandlePose.FromTransform(cgHandle);
-            var modelView = BuildModelViewMatchingHandle(
-                targetHandle,
-                new Vector3(0.35f, 1.05f, 0.55f),
-                Quaternion.Euler(8f, -40f, 3f));
+            var estimatedWorldPos = new Vector3(0.2f, 1.1f, 0.55f);
+            var estimatedRot = Quaternion.LookRotation(
+                (Quaternion.Euler(35f, 10f, 0f) * Vector3.forward).normalized,
+                Vector3.up);
+            var modelView = BuildModelViewMatchingHandle(targetHandle, estimatedWorldPos, estimatedRot);
 
             try
             {
                 var originBefore = trackingOrigin.position;
-                var handleWorldBefore = cgHandle.position;
-                Assert.IsTrue(RigCalibrationOffset.ApplyCalibrationToTrackingOrigin(
+                var originRotBefore = trackingOrigin.rotation;
+
+                Assert.IsTrue(RigCalibrationOffset.ApplyContentRootAlignment(
                     modelView,
-                    trackingOrigin,
                     contentRoot,
                     cgHandle,
-                    CalibrationOptions.Default));
+                    out var result));
 
-                Assert.That(Vector3.Distance(trackingOrigin.position, originBefore), Is.GreaterThan(1e-3f));
-                Assert.That(Vector3.Distance(cgHandle.position, handleWorldBefore), Is.LessThan(Tolerance));
-            }
-            finally
-            {
-                Object.DestroyImmediate(contentRoot.gameObject);
-                Object.DestroyImmediate(trackingOrigin.gameObject);
-            }
-        }
+                Assert.That(Vector3.Distance(trackingOrigin.position, originBefore), Is.LessThan(Tolerance));
+                Assert.That(Quaternion.Angle(trackingOrigin.rotation, originRotBefore), Is.LessThan(0.1f));
+                Assert.That(Vector3.Distance(cgHandle.position, estimatedWorldPos), Is.LessThan(0.02f));
+                Assert.That(Mathf.Abs(result.HubTwistAppliedDeg), Is.GreaterThanOrEqualTo(0f));
 
-        [Test]
-        public void TryComputeProposedOriginPose_PreservesCgHandleWorldPosition_WhenConstraintIsNone()
-        {
-            var contentRoot = new GameObject("ContentRoot").transform;
-            var cgHandle = new GameObject("CgHandle").transform;
-            var trackingOrigin = new GameObject("TrackingOrigin").transform;
-            cgHandle.SetParent(contentRoot, false);
-            cgHandle.localPosition = new Vector3(0f, 0.8f, 0.4f);
-            contentRoot.SetPositionAndRotation(Vector3.zero, Quaternion.identity);
-            trackingOrigin.SetPositionAndRotation(new Vector3(0f, 1.5f, 0f), Quaternion.Euler(0f, 20f, 0f));
-
-            var targetHandle = CgHandlePose.FromTransform(cgHandle);
-            var modelView = BuildModelViewMatchingHandle(
-                targetHandle,
-                new Vector3(0.1f, 1.2f, 0.5f),
-                Quaternion.Euler(0f, -10f, 0f));
-
-            try
-            {
-                var handleWorldBefore = cgHandle.position;
-                Assert.IsTrue(RigCalibrationOffset.TryComputeProposedOriginPose(
-                    modelView,
-                    trackingOrigin,
-                    contentRoot,
-                    cgHandle,
-                    out var proposedPosition,
-                    out var proposedRotation));
-
-                trackingOrigin.SetPositionAndRotation(proposedPosition, proposedRotation);
-                Assert.That(Vector3.Distance(cgHandle.position, handleWorldBefore), Is.LessThan(Tolerance));
+                var axis = cgHandle.forward.normalized;
+                var handleUpOnPlane = Vector3.ProjectOnPlane(cgHandle.up, axis).normalized;
+                var worldUpOnPlane = Vector3.ProjectOnPlane(Vector3.up, axis).normalized;
+                Assert.That(Vector3.Angle(handleUpOnPlane, worldUpOnPlane), Is.LessThan(1f));
             }
             finally
             {

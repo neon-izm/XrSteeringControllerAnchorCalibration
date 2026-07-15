@@ -199,14 +199,6 @@ namespace XrSteeringControllerAnchorCalibration
             return Quaternion.LookRotation(forward, up);
         }
 
-        /// <summary>
-        /// 任意の Quaternion から roll=0 の姿勢を再構築する。
-        /// </summary>
-        public static Quaternion EnforceZeroRoll(Quaternion rotation)
-        {
-            return RotationFromNormal(rotation * Vector3.forward);
-        }
-
         private static int[] CollectInliers(IReadOnlyList<Vector3> points, Circle3D circle, float threshold)
         {
             var thresholdSq = threshold * threshold;

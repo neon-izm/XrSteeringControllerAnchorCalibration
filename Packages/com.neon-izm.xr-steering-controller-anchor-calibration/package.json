@@ -1,8 +1,8 @@
 {
   "name": "com.neon-izm.xr-steering-controller-anchor-calibration",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "displayName": "XR Steering Controller Anchor Calibration",
-  "description": "Estimate a rigid ModelView from HMD hand-tracking arcs to a known CG handle pose. Uses VR-HMD world-up for roll, head position for front/back, and helpers to apply the result to XR Origin.",
+  "description": "Estimate a rigid ModelView from HMD hand-tracking arcs to a known CG handle pose. Circle in-plane phase uses a reference up (world up by default, or CG handle up for nearly-horizontal wheels). Head position selects front/back. Helpers apply the result to XR Origin.",
   "unity": "6000.0",
   "author": {
     "name": "neon-izm"

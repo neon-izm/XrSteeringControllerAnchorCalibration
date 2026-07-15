@@ -226,6 +226,29 @@ namespace XrSteeringControllerAnchorCalibration.Tests
         }
 
         [Test]
+        public void OrientCircle_NearlyHorizontal_HandleUpGivesStablePhase()
+        {
+            // Desk-flat wheel: normal ≈ world up (world-up projection onto plane is degenerate).
+            var raw = Circle3D.FromPose(new Vector3(0f, 0.75f, 0.4f), Vector3.up, 0.15f);
+            var handleRotation = Quaternion.Euler(15f, 25f, 0f);
+            var handleUp = handleRotation * Vector3.up;
+
+            var orientedWorld = AnchorCalibration.OrientCircleWithWorldUp(raw, Vector3.up);
+            var orientedHandle = AnchorCalibration.OrientCircleWithWorldUp(raw, handleUp);
+
+            var handleUpOnPlane = Vector3.ProjectOnPlane(handleUp, raw.Normal);
+            Assert.That(handleUpOnPlane.sqrMagnitude, Is.GreaterThan(1e-4f));
+
+            var circleUpHandle = (orientedHandle.Rotation * Vector3.up).normalized;
+            var expected = handleUpOnPlane.normalized;
+            Assert.That(Vector3.Angle(circleUpHandle, expected), Is.LessThan(1e-2f));
+
+            // World-up path falls back to an arbitrary in-plane axis; handle-up path should differ.
+            var phaseDelta = Quaternion.Angle(orientedWorld.Rotation, orientedHandle.Rotation);
+            Assert.That(phaseDelta, Is.GreaterThan(1f));
+        }
+
+        [Test]
         public void Calibrate_ArcPhaseAmbiguity_DoesNotProduceLargeRoll()
         {
             var center = new Vector3(0.1f, 1f, 0.2f);

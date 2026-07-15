@@ -10,7 +10,8 @@ namespace XrSteeringControllerAnchorCalibration
 
         /// <summary>
         /// HMD 世界座標の軌跡と頭位置から円を推定し、既知の CG ハンドル姿勢へ合わせる ModelView を求める。
-        /// 前後は頭位置で選択する。roll は VR-HMD の水平面制約（<see cref="Vector3.up"/> が真上）で 0 にする。
+        /// 前後は頭位置で選択する。平面内位相の基準 up は <paramref name="phaseReferenceUp"/>
+        /// （省略時はワールド up）。寝たハンドルでは <c>targetHandle.Rotation * Vector3.up</c> を推奨。
         /// 頭の回転（pitch/roll）はロール解決に使わない。
         /// </summary>
         public static CalibrationResult Calibrate(
@@ -20,7 +21,8 @@ namespace XrSteeringControllerAnchorCalibration
             float threshold = CircleFitting3D.DefaultThreshold,
             int maxIterations = 0,
             float successProbability = 0.999f,
-            System.Random random = null)
+            System.Random random = null,
+            Vector3 phaseReferenceUp = default)
         {
             if (worldPoints == null)
             {
@@ -34,7 +36,13 @@ namespace XrSteeringControllerAnchorCalibration
                 successProbability,
                 random);
 
-            var modelView = ComputeCalibratedModelView(fit.Circle, targetHandle, headPose);
+            var modelView = ComputeCalibratedModelView(
+                fit.Circle,
+                targetHandle,
+                headPose,
+                forceFlippedCandidate: false,
+                phaseReferenceUp,
+                out _);
             return new CalibrationResult(modelView);
         }
 
@@ -163,7 +171,7 @@ namespace XrSteeringControllerAnchorCalibration
         }
 
         /// <summary>
-        /// 円フィット → ワールド up で roll=0 → 前後選択 → ハンドル局所 roll 除去。
+        /// 円フィット → 位相基準 up で平面内位相決め → 前後選択 → ハンドル局所 roll 除去。
         /// </summary>
         public static Matrix4x4 ComputeCalibratedModelView(
             Circle3D rawFit,
@@ -171,11 +179,17 @@ namespace XrSteeringControllerAnchorCalibration
             HeadPose headPose,
             bool forceFlippedCandidate = false)
         {
-            return ComputeCalibratedModelView(rawFit, targetHandle, headPose, forceFlippedCandidate, out _);
+            return ComputeCalibratedModelView(
+                rawFit,
+                targetHandle,
+                headPose,
+                forceFlippedCandidate,
+                default,
+                out _);
         }
 
         /// <summary>
-        /// 円フィット → ワールド up で roll=0 → 前後選択 → ハンドル局所 roll 除去。
+        /// 円フィット → ワールド up（または既定）で位相決め → 前後選択 → ハンドル局所 roll 除去。
         /// orientedCircleUsed は採用候補の姿勢付き円。頭の Rotation は未使用（Position のみ前後に使用）。
         /// </summary>
         public static Matrix4x4 ComputeCalibratedModelView(
@@ -185,7 +199,30 @@ namespace XrSteeringControllerAnchorCalibration
             bool forceFlippedCandidate,
             out Circle3D orientedCircleUsed)
         {
-            var oriented = OrientCircleWithWorldUp(rawFit);
+            return ComputeCalibratedModelView(
+                rawFit,
+                targetHandle,
+                headPose,
+                forceFlippedCandidate,
+                default,
+                out orientedCircleUsed);
+        }
+
+        /// <summary>
+        /// 円フィット → <paramref name="phaseReferenceUp"/> で平面内位相決め → 前後選択 → ハンドル局所 roll 除去。
+        /// 寝たハンドル（円法線≒ワールド up）では world up 射影が潰れるため、
+        /// CG ハンドルの up（<c>targetHandle.Rotation * Vector3.up</c>）を渡すと位相が安定する。
+        /// phaseReferenceUp が zero のときは <see cref="Vector3.up"/>。
+        /// </summary>
+        public static Matrix4x4 ComputeCalibratedModelView(
+            Circle3D rawFit,
+            CgHandlePose targetHandle,
+            HeadPose headPose,
+            bool forceFlippedCandidate,
+            Vector3 phaseReferenceUp,
+            out Circle3D orientedCircleUsed)
+        {
+            var oriented = OrientCircleWithWorldUp(rawFit, phaseReferenceUp);
             var flipped = FlipCircleNormalInPlane(oriented);
 
             var modelViewA = RemoveHandleLocalRoll(ComputeModelView(oriented, targetHandle), oriented, targetHandle);

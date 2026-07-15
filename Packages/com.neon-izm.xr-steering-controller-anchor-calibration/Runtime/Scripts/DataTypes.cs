@@ -109,48 +109,4 @@ namespace XrSteeringControllerAnchorCalibration
             ModelView = modelView;
         }
     }
-
-    /// <summary>
-    /// ModelView をトラッキング原点へ適用する際の水平・姿勢制約。
-    /// <see cref="AnchorCalibration.RemoveHandleLocalRoll"/> とは独立。
-    /// </summary>
-    public enum TrackingHorizonConstraint
-    {
-        /// <summary>追加の水平制約なし。</summary>
-        None = 0,
-
-        /// <summary>
-        /// 原点 forward を維持し、ワールド up 基準で roll のみ除去。HMD 適用の推奨。
-        /// </summary>
-        RemoveRoll = 1,
-
-        /// <summary>ヨーを維持し、ピッチを水平化（roll は維持）。</summary>
-        RemovePitch = 2,
-
-        /// <summary>ヨーのみ残す（ピッチ・ロール除去）。</summary>
-        RemovePitchAndRoll = 3,
-    }
-
-    /// <summary>
-    /// トラッキング原点適用時のオプション。ModelView 計算自体には影響しない。
-    /// </summary>
-    public readonly struct CalibrationOptions
-    {
-        public TrackingHorizonConstraint HorizonConstraint { get; }
-        public Vector3 ReferenceUp { get; }
-
-        public CalibrationOptions(TrackingHorizonConstraint horizonConstraint, Vector3 referenceUp)
-        {
-            HorizonConstraint = horizonConstraint;
-            ReferenceUp = referenceUp;
-        }
-
-        public static CalibrationOptions Default => new CalibrationOptions(
-            TrackingHorizonConstraint.RemoveRoll,
-            Vector3.up);
-
-        public static CalibrationOptions None => new CalibrationOptions(
-            TrackingHorizonConstraint.None,
-            Vector3.up);
-    }
 }

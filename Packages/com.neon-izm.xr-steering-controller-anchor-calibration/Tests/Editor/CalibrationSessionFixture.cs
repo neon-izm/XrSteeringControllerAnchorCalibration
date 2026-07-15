@@ -14,8 +14,6 @@ namespace XrSteeringControllerAnchorCalibration.Tests
     /// </summary>
     public static class CalibrationSessionFixture
     {
-        const float NearlyHorizontalNormalDot = 0.85f;
-
         [Serializable]
         public class Dto
         {
@@ -31,7 +29,6 @@ namespace XrSteeringControllerAnchorCalibration.Tests
             public float[] headRotation;
             public float[] points;
 
-            public string expectedPhaseUp;
             public float expectedCircleRadiusApprox;
             public float expectedNormalDotUpApprox;
             public float expectedMaxHandleLocalRollDeg = 5f;
@@ -93,17 +90,6 @@ namespace XrSteeringControllerAnchorCalibration.Tests
                 ToVector3(dto.headPosition),
                 ToQuaternion(dto.headRotation));
             return new Session(dto, points, handle, head);
-        }
-
-        public static string ResolvePhaseUp(Circle3D circle)
-        {
-            var worldUpOnPlane = Vector3.ProjectOnPlane(Vector3.up, circle.Normal);
-            return worldUpOnPlane.sqrMagnitude >= 1e-4f ? "worldUp" : "handleUp";
-        }
-
-        public static bool IsNearlyHorizontal(Circle3D circle)
-        {
-            return Mathf.Abs(Vector3.Dot(circle.Normal.normalized, Vector3.up)) >= NearlyHorizontalNormalDot;
         }
 
         static Vector3 ToVector3(float[] v) => new(v[0], v[1], v[2]);

@@ -23,17 +23,11 @@ namespace XrSteeringControllerAnchorCalibration.Tests
             Assert.That(session.Points.Count, Is.GreaterThanOrEqualTo(8));
 
             var fit = CircleFitting3D.FitCircleMsac(session.Points, random: new System.Random(4));
-            var phaseUp = CalibrationSessionFixture.ResolvePhaseUp(fit.Circle);
-            var phaseReferenceUp = phaseUp == "worldUp"
-                ? Vector3.up
-                : session.Handle.Rotation * Vector3.up;
-
             var modelView = AnchorCalibration.ComputeCalibratedModelView(
                 fit.Circle,
                 session.Handle,
                 session.Head,
                 forceFlippedCandidate: false,
-                phaseReferenceUp,
                 out var orientedCircle);
 
             var roll = AnchorCalibration.GetHandleLocalRollDeg(modelView, orientedCircle, session.Handle);
@@ -56,11 +50,6 @@ namespace XrSteeringControllerAnchorCalibration.Tests
             Assert.That(
                 AnchorCalibration.IsOnDriverSeatSide(modelView, session.Head, session.Handle),
                 Is.True);
-
-            if (!string.IsNullOrEmpty(dto.expectedPhaseUp))
-            {
-                Assert.That(phaseUp, Is.EqualTo(dto.expectedPhaseUp));
-            }
 
             if (dto.expectedCircleRadiusApprox > 0f)
             {

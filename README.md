@@ -1,58 +1,47 @@
 # XR Steering Controller Anchor Calibration
 
-Unity package that estimates a rigid **ModelView** (tracking space → CG handle space) from a partial hand-tracking arc, a known CG handle pose, and HMD **head position**.
+Unity package that estimates a rigid **ModelView** (HMD tracking space → CG handle space) from a partial hand-tracking arc, a known CG handle pose, and HMD head **position**.
 
-Requires a **VR-HMD tracking space** where **`Vector3.up` is true world up** (gravity / IMU horizontal plane). That constraint is used to pin handle roll.
+Designed for **VR-HMD** tracking spaces where **`Vector3.up` is true world up** (gravity / IMU). That fact pins handle roll without using head pitch/roll.
 
-**Current version: 0.4.0**
+Version **0.5.0**
 
 ## Install
 
-### Git URL (UPM)
-
-Open **Window > Package Manager > + > Add package from git URL...** and enter:
+**Window > Package Manager > + > Add package from git URL...**
 
 ```
 https://github.com/neon-izm/XrSteeringControllerAnchorCalibration.git?path=Packages/com.neon-izm.xr-steering-controller-anchor-calibration
 ```
 
-Or add to `Packages/manifest.json`:
+Or in `Packages/manifest.json`:
 
 ```json
 {
   "dependencies": {
-    "com.neon-izm.xr-steering-controller-anchor-calibration": "https://github.com/neon-izm/XrSteeringControllerAnchorCalibration.git?path=Packages/com.neon-izm.xr-steering-controller-anchor-calibration"
+    "com.neon-izm.xr-steering-controller-anchor-calibration": "https://github.com/neon-izm/XrSteeringControllerAnchorCalibration.git?path=Packages/com.neon-izm.xr-steering-controller-anchor-calibration#v0.5.0"
   }
 }
 ```
 
-Pin a tag or commit by appending `#v0.4.0` or `#<commit-hash>`.
-
 ## Requirements
 
 - Unity 6 (6000.3+ recommended)
-- VR-HMD / OpenXR-style tracking where world up is gravity-aligned (`Vector3.up`)
-- `com.unity.test-framework` (for Edit Mode tests)
+- VR-HMD / OpenXR-style tracking with gravity-aligned world up
+- Edit Mode tests: `com.unity.test-framework`
 
-## Quick start
-
-### API
+## Calibrate
 
 ```csharp
 using System.Collections.Generic;
 using UnityEngine;
 using XrSteeringControllerAnchorCalibration;
 
-// Known CG handle pose (position + rotation). Radius is unknown.
-// Forward = vehicle front direction.
-var targetHandle = new CgHandlePose(cgHandleTransform.position, cgHandleTransform.rotation);
+var targetHandle = new CgHandlePose(cgHandle.position, cgHandle.rotation);
+// Forward = vehicle front.
 
-// HMD world-space tracking points along the handle arc
-IReadOnlyList<Vector3> worldPoints = trackedPoints;
-
-// HeadPose: Calibrate uses Position only (front/back).
-// Rotation is unused; pass HMD rotation for convenience (e.g. FromTransform).
-var headPose = HeadPose.FromTransform(hmdTransform);
+IReadOnlyList<Vector3> worldPoints = trackedArcPoints;
+var headPose = HeadPose.FromTransform(hmdTransform); // Position used for front/back only
 
 CalibrationResult result = AnchorCalibration.Calibrate(worldPoints, targetHandle, headPose);
 Matrix4x4 modelView = result.ModelView;
@@ -60,120 +49,64 @@ Matrix4x4 modelView = result.ModelView;
 Vector3 cgPoint = AnchorCalibration.WorldToCg(worldPoint, modelView);
 ```
 
-### Assumptions
+What `Calibrate` does:
 
-- CG handle **radius is unknown**; output is a rigid ModelView (scale = 1).
-- **Front / back** is resolved from **head position** only (driver-seat side vs `targetHandle.Forward`).
-- **Roll** uses VR-HMD world up: `OrientCircleWithWorldUp` (`Vector3.up`), then `RemoveHandleLocalRoll` vs the known CG handle. **Head pitch/roll are not used.**
-- Robust fitting: **MSAC** (+ Taubin refine).
-- CG handle forward should point vehicle front so Front/Back scoring is consistent.
+1. MSAC 3D circle fit (+ Taubin refine)
+2. Orient the circle with world up (`Vector3.up`) so in-plane roll is fixed
+3. Build two front/back candidates and pick the one where the mapped head is on the driver-seat side
+4. Remove remaining twist about the CG handle forward
 
-### Pipeline
+Notes:
 
-1. MSAC 3D circle fit
-2. Orient circle with world up → roll = 0 on the circle plane
-3. Two front/back ModelView candidates (in-plane normal flip)
-4. Pick the candidate where mapped head is on the driver-seat side
-5. Remove handle-local roll relative to `targetHandle`
+- CG handle **radius is unknown**; ModelView is rigid (scale = 1)
+- Head **rotation is unused** by `Calibrate`
+- Point CG handle forward toward vehicle front so front/back scoring is consistent
 
-### Applying to XR Origin (XRI `XRRig`)
+## Apply the result (XRI)
 
-`Calibrate` returns **ModelView only**. Keep CG content scene-fixed; move **XR Origin** with `RigCalibrationOffset` + `PoseConstraints` (default horizon: `RemoveRoll`).
+`Calibrate` only returns ModelView. Apply it by keeping **XR Origin** level and moving the CG content:
 
-| API | Purpose |
-|-----|---------|
-| `OrientCircleWithWorldUp` / `RemoveHandleLocalRoll` | Calibration-time roll (handle / circle) |
-| `RigCalibrationOffset` | ModelView → XROrigin rig offset (content stays fixed) |
-| `PoseConstraints.RemoveRoll` | World roll removal on the tracking origin after apply |
-| `PoseConstraints.ComputeTrackingOriginPose` | Horizon options + pivot at CG handle world position |
+```csharp
+RigCalibrationOffset.ApplyContentRootAlignment(
+    result.ModelView,
+    vehicleRoot,   // content root (usually cgHandle.parent)
+    cgHandle,
+    out ContentRootAlignmentResult align);
+```
 
-Typical hierarchy:
+This places the content from ModelView, then twists about the handle hub so `handle.up` matches world up on the wheel plane.
+
+Typical scene:
 
 ```
 Scene
-├── XR Origin                 ← XROrigin (XRI Starter Assets / XRRig)
+├── XR Origin
 │   └── Camera Offset
 │       └── Main Camera
-└── VehicleRoot               ← scene-fixed CG root
-    └── SteeringWheel         ← CgHandlePose + horizon pivot
+└── VehicleRoot          ← content root
+    └── SteeringWheel    ← CgHandlePose
 ```
-
-Copy-paste apply helper:
-
-```csharp
-using Unity.XR.CoreUtils;
-using UnityEngine;
-using XrSteeringControllerAnchorCalibration;
-
-public sealed class SteeringCalibrationApply : MonoBehaviour
-{
-    [SerializeField] XROrigin xrOrigin;
-    [SerializeField] Transform vehicleRoot;
-    [SerializeField] Transform cgHandle;
-
-    Vector3? sessionOriginPosition;
-    Quaternion? sessionOriginRotation;
-
-    public void Apply(CalibrationResult result)
-    {
-        CaptureSessionOriginIfNeeded();
-
-        RigCalibrationOffset.ApplyCalibrationToTrackingOrigin(
-            result.ModelView,
-            xrOrigin.transform,
-            vehicleRoot,
-            cgHandle,
-            CalibrationOptions.Default);
-    }
-
-    public void ResetCalibrationOffset()
-    {
-        if (!sessionOriginPosition.HasValue || !sessionOriginRotation.HasValue)
-        {
-            return;
-        }
-
-        xrOrigin.transform.SetPositionAndRotation(
-            sessionOriginPosition.Value,
-            sessionOriginRotation.Value);
-    }
-
-    void CaptureSessionOriginIfNeeded()
-    {
-        if (sessionOriginPosition.HasValue)
-        {
-            return;
-        }
-
-        sessionOriginPosition = xrOrigin.transform.position;
-        sessionOriginRotation = xrOrigin.transform.rotation;
-    }
-}
-```
-
-`TrackingHorizonConstraint`: `None`, `RemoveRoll` (recommended), `RemovePitch`, `RemovePitchAndRoll`.
 
 ## Sample
 
-Import **Calibration Sample** from Package Manager, or use `Assets/CalibrationSample/` in this repo.
+Import **Calibration Sample** from Package Manager, or open `Assets/CalibrationSample/CalibrationSample.unity` in this repo.
 
-- Scene: `Assets/CalibrationSample/CalibrationSample.unity`
-- `SteeringAnchorCalibrationSample`: Generate → Run Calibration → Clear
-- Gizmos + Inspector metrics (front/back score, handle-local roll)
+Inspector flow: Generate Sample Points → Run Calibration → Clear.
 
-## Package layout
+## Layout
 
 ```
 Packages/com.neon-izm.xr-steering-controller-anchor-calibration/
-├── package.json
-├── Runtime/          # AnchorCalibration, PoseConstraints, RigCalibrationOffset, circle fitting
-├── Tests/Editor/     # Edit Mode tests
-└── Samples~/         # Calibration Sample
+├── Runtime/       # AnchorCalibration, RigCalibrationOffset, circle fitting
+├── Tests/Editor/  # Edit Mode tests (+ device session fixtures)
+└── Samples~/      # Calibration Sample
 ```
 
 ## Tests
 
-**Window > General > Test Runner** (Edit Mode). For package tests in a consumer project, add to `Packages/manifest.json`:
+**Window > General > Test Runner** (Edit Mode).
+
+To run package tests from a consumer project:
 
 ```json
 {

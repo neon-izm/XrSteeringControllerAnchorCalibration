@@ -2,6 +2,8 @@
 
 JSON captures used by `DeviceSessionCalibrationTests`.
 
+Phase / roll always use **world up** (`Vector3.up`) in the library; fixtures only assert geometric expectations (radius, normalDotUp, handle-local roll, driver seat).
+
 ## Sources
 
 | `source` | Meaning |
@@ -11,8 +13,9 @@ JSON captures used by `DeviceSessionCalibrationTests`.
 
 Known good device captures:
 
-- `quest-20260715-160854-device-contentAlign-ok.json` — 0.1.12 always-contentAlign success (mid-tilt, worldUp phase)
-- `quest-20260715-155630-device.json` — 0.1.10 pre-fix session (same capture pipeline)
+- `quest-20260715-160854-device-contentAlign-ok.json` — contentAlign success (mid-tilt)
+- `quest-20260715-155630-device.json` — earlier device session
+- `quest-20260716-midtilt-log-reconstructed.json` — log-reconstructed mid-tilt
 
 ## Pull real sessions from Quest
 
@@ -24,11 +27,11 @@ After a successful calibrate, the app writes:
 adb pull /sdcard/Android/data/com.izmtechlab.xrsteeringdemo/files/CalibrationSessions/ ./Fixtures/
 ```
 
-Then add optional expectation fields (same names as in the reconstructed fixture) and reference the file from a `[TestCase("…json")]`.
+Then add optional expectation fields and reference the file from a `[TestCase("…json")]`.
 
 ## Schema (v1)
 
 - `handlePosition` / `headPosition`: float[3]
 - `handleRotation` / `headRotation`: float[4] (x,y,z,w)
 - `points`: flat float[] of xyz triplets
-- optional `expected*` fields for regression asserts
+- optional `expectedCircleRadiusApprox`, `expectedNormalDotUpApprox`, `expectedMaxHandleLocalRollDeg`, …

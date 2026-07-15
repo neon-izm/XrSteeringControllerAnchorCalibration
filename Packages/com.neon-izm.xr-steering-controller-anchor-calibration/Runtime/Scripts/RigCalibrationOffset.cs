@@ -3,15 +3,64 @@ using UnityEngine;
 namespace XrSteeringControllerAnchorCalibration
 {
     /// <summary>
-    /// ModelView を XR Interaction Toolkit の XROrigin（トラッキング原点）へ適用するための rig offset 計算。
-    /// CG コンテンツ（車両ルート）はシーン固定のまま、原点だけ動かしてハンドル位置を整合させる。
+    /// Result of <see cref="RigCalibrationOffset.ApplyContentRootAlignment"/>.
+    /// </summary>
+    public readonly struct ContentRootAlignmentResult
+    {
+        /// <summary>
+        /// Signed degrees applied about the handle hub (forward) so handle.up matches
+        /// world up projected onto the wheel plane. Zero when already aligned
+        /// or the projection is degenerate (e.g. nearly flat wheel).
+        /// </summary>
+        public readonly float HubTwistAppliedDeg;
+
+        public ContentRootAlignmentResult(float hubTwistAppliedDeg)
+        {
+            HubTwistAppliedDeg = hubTwistAppliedDeg;
+        }
+    }
+
+    /// <summary>
+    /// ModelView を CG コンテンツへ適用する。
+    /// XR Origin は動かさず、コンテンツルートを整合したうえで handle.up をワールド up に揃える。
     /// </summary>
     public static class RigCalibrationOffset
     {
         /// <summary>
-        /// ModelView 整合後にコンテンツルートが置かれるべきワールド姿勢を求める。
+        /// Tracking origin は動かさず、コンテンツルートを ModelView 世界姿勢へ合わせたあと、
+        /// ハンドル hub（forward）まわりにツイストして handle.up をワールド up 平面投影に揃える。
         /// </summary>
-        public static bool TryComputeContentRootAlignment(
+        public static bool ApplyContentRootAlignment(
+            Matrix4x4 modelView,
+            Transform contentRoot,
+            Transform cgHandle,
+            out ContentRootAlignmentResult result)
+        {
+            result = default;
+            if (contentRoot == null || cgHandle == null)
+            {
+                return false;
+            }
+
+            if (!TryComputeContentRootAlignment(
+                    modelView,
+                    cgHandle.position,
+                    cgHandle.rotation,
+                    cgHandle.localPosition,
+                    cgHandle.localRotation,
+                    out var alignedRootPos,
+                    out var alignedRootRot))
+            {
+                return false;
+            }
+
+            contentRoot.SetPositionAndRotation(alignedRootPos, alignedRootRot);
+            var hubTwistDeg = TwistContentAboutHandleToMatchWorldUp(contentRoot, cgHandle);
+            result = new ContentRootAlignmentResult(hubTwistDeg);
+            return true;
+        }
+
+        static bool TryComputeContentRootAlignment(
             Matrix4x4 modelView,
             Vector3 cgHandleWorldPosition,
             Quaternion cgHandleWorldRotation,
@@ -28,118 +77,34 @@ namespace XrSteeringControllerAnchorCalibration
             return true;
         }
 
-        /// <summary>
-        /// 現在のコンテンツルート姿勢から、トラッキング原点に掛ける rig offset を求める。
-        /// </summary>
-        public static bool TryComputeRigOffset(
-            Matrix4x4 modelView,
-            Vector3 contentRootPosition,
-            Quaternion contentRootRotation,
-            Vector3 cgHandleWorldPosition,
-            Quaternion cgHandleWorldRotation,
-            Vector3 cgHandleLocalPosition,
-            Quaternion cgHandleLocalRotation,
-            out Vector3 rigOffsetPosition,
-            out Quaternion rigOffsetRotation)
+        static float TwistContentAboutHandleToMatchWorldUp(Transform contentRoot, Transform cgHandle)
         {
-            if (!TryComputeContentRootAlignment(
-                    modelView,
-                    cgHandleWorldPosition,
-                    cgHandleWorldRotation,
-                    cgHandleLocalPosition,
-                    cgHandleLocalRotation,
-                    out var alignedRootPosition,
-                    out var alignedRootRotation))
+            var twistDeg = ComputeHubTwistDeg(cgHandle.forward, cgHandle.up);
+            if (Mathf.Abs(twistDeg) < 1e-3f)
             {
-                rigOffsetPosition = default;
-                rigOffsetRotation = default;
-                return false;
+                return 0f;
             }
 
-            var contentDelta = Matrix4x4.TRS(alignedRootPosition, alignedRootRotation, Vector3.one)
-                * Matrix4x4.TRS(contentRootPosition, contentRootRotation, Vector3.one).inverse;
-            var rigOffset = contentDelta.inverse;
-            rigOffsetPosition = rigOffset.GetColumn(3);
-            rigOffsetRotation = rigOffset.rotation;
-            return true;
+            contentRoot.RotateAround(cgHandle.position, cgHandle.forward.normalized, twistDeg);
+            return twistDeg;
         }
 
-        public static bool TryComputeRigOffset(
-            Matrix4x4 modelView,
-            Transform contentRoot,
-            Transform cgHandle,
-            out Vector3 rigOffsetPosition,
-            out Quaternion rigOffsetRotation)
+        static float ComputeHubTwistDeg(Vector3 handleForward, Vector3 handleUp)
         {
-            return TryComputeRigOffset(
-                modelView,
-                contentRoot.position,
-                contentRoot.rotation,
-                cgHandle.position,
-                cgHandle.rotation,
-                cgHandle.localPosition,
-                cgHandle.localRotation,
-                out rigOffsetPosition,
-                out rigOffsetRotation);
-        }
-
-        /// <summary>
-        /// rig offset を現在のトラッキング原点に適用した候補姿勢（水平制約前）を求める。
-        /// </summary>
-        public static bool TryComputeProposedOriginPose(
-            Matrix4x4 modelView,
-            Transform trackingOrigin,
-            Transform contentRoot,
-            Transform cgHandle,
-            out Vector3 proposedPosition,
-            out Quaternion proposedRotation)
-        {
-            if (!TryComputeRigOffset(modelView, contentRoot, cgHandle, out var rigOffsetPosition, out var rigOffsetRotation))
+            if (handleForward.sqrMagnitude < 1e-8f)
             {
-                proposedPosition = default;
-                proposedRotation = default;
-                return false;
+                return 0f;
             }
 
-            var originMatrix = Matrix4x4.TRS(trackingOrigin.position, trackingOrigin.rotation, Vector3.one);
-            var rigOffsetMatrix = Matrix4x4.TRS(rigOffsetPosition, rigOffsetRotation, Vector3.one);
-            var proposedMatrix = rigOffsetMatrix * originMatrix;
-            proposedPosition = proposedMatrix.GetColumn(3);
-            proposedRotation = proposedMatrix.rotation;
-            return true;
-        }
-
-        /// <summary>
-        /// ModelView をトラッキング原点へ適用し、水平制約（デフォルト RemoveRoll）まで行う。
-        /// </summary>
-        public static bool ApplyCalibrationToTrackingOrigin(
-            Matrix4x4 modelView,
-            Transform trackingOrigin,
-            Transform contentRoot,
-            Transform cgHandle,
-            CalibrationOptions options)
-        {
-            if (!TryComputeProposedOriginPose(
-                    modelView,
-                    trackingOrigin,
-                    contentRoot,
-                    cgHandle,
-                    out var proposedPosition,
-                    out var proposedRotation))
+            var axis = handleForward.normalized;
+            var currentUp = Vector3.ProjectOnPlane(handleUp, axis);
+            var desiredUp = Vector3.ProjectOnPlane(Vector3.up, axis);
+            if (currentUp.sqrMagnitude < 1e-6f || desiredUp.sqrMagnitude < 1e-6f)
             {
-                return false;
+                return 0f;
             }
 
-            PoseConstraints.ComputeTrackingOriginPose(
-                proposedPosition,
-                proposedRotation,
-                cgHandle.position,
-                options,
-                out var originPosition,
-                out var originRotation);
-
-            trackingOrigin.SetPositionAndRotation(originPosition, originRotation);
-            return true;
+            return Vector3.SignedAngle(currentUp.normalized, desiredUp.normalized, axis);
         }
     }
 }

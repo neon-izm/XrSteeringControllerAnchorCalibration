@@ -182,6 +182,50 @@ namespace XrSteeringControllerAnchorCalibration.Tests
         }
 
         [Test]
+        public void Calibrate_PitchedAndRolledHeadRotation_DoesNotChangeRollPhase()
+        {
+            var data = CreateDriverSeatScenario(seed: 21, out var targetHandle, out var levelHead);
+            var tiltedHead = new HeadPose(
+                levelHead.Position,
+                Quaternion.Euler(35f, 0f, 20f) * levelHead.Rotation);
+
+            var resultLevel = AnchorCalibration.Calibrate(
+                data.Points,
+                targetHandle,
+                levelHead,
+                random: new System.Random(3));
+            var resultTilted = AnchorCalibration.Calibrate(
+                data.Points,
+                targetHandle,
+                tiltedHead,
+                random: new System.Random(3));
+
+            var fit = CircleFitting3D.FitCircleMsac(data.Points, random: new System.Random(3));
+            AnchorCalibration.ComputeCalibratedModelView(fit.Circle, targetHandle, levelHead, false, out var orientedLevel);
+            AnchorCalibration.ComputeCalibratedModelView(fit.Circle, targetHandle, tiltedHead, false, out var orientedTilted);
+
+            Assert.That(
+                Quaternion.Angle(orientedLevel.Rotation, orientedTilted.Rotation),
+                Is.LessThan(1e-3f));
+            Assert.That(
+                Quaternion.Angle(resultLevel.ModelView.rotation, resultTilted.ModelView.rotation),
+                Is.LessThan(1e-3f));
+        }
+
+        [Test]
+        public void OrientCircleWithWorldUp_UsesWorldUpNotHeadForward()
+        {
+            var normal = new Vector3(0.2f, 0.1f, 1f).normalized;
+            var raw = Circle3D.FromPose(new Vector3(0.1f, 1f, 0.3f), CircleFitting3D.RotationFromNormal(normal), 0.15f);
+            var oriented = AnchorCalibration.OrientCircleWithWorldUp(raw);
+
+            var upOnPlane = Vector3.ProjectOnPlane(Vector3.up, oriented.Normal).normalized;
+            var circleUp = (oriented.Rotation * Vector3.up).normalized;
+            Assert.That(Vector3.Angle(circleUp, upOnPlane), Is.LessThan(1e-2f));
+            Assert.That(Mathf.Abs(SignedRollAroundForward(oriented.Rotation)), Is.LessThan(1e-2f));
+        }
+
+        [Test]
         public void Calibrate_ArcPhaseAmbiguity_DoesNotProduceLargeRoll()
         {
             var center = new Vector3(0.1f, 1f, 0.2f);
@@ -246,6 +290,25 @@ namespace XrSteeringControllerAnchorCalibration.Tests
             var headPosition = handleCenter + backOffset + Vector3.up * 0.08f;
             var headRotation = Quaternion.LookRotation(handleRotation * Vector3.forward, Vector3.up);
             return new HeadPose(headPosition, headRotation);
+        }
+
+        static float SignedRollAroundForward(Quaternion rotation)
+        {
+            var forward = rotation * Vector3.forward;
+            if (forward.sqrMagnitude < 1e-8f)
+            {
+                return 0f;
+            }
+
+            var up = rotation * Vector3.up;
+            var referenceUp = Vector3.ProjectOnPlane(Vector3.up, forward);
+            var projectedUp = Vector3.ProjectOnPlane(up, forward);
+            if (referenceUp.sqrMagnitude < 1e-8f || projectedUp.sqrMagnitude < 1e-8f)
+            {
+                return 0f;
+            }
+
+            return Vector3.SignedAngle(referenceUp, projectedUp, forward);
         }
     }
 }

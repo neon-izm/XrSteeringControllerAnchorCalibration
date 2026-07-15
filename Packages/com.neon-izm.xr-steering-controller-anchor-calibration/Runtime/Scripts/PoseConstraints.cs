@@ -110,25 +110,6 @@ namespace XrSteeringControllerAnchorCalibration
         }
 
         /// <summary>
-        /// 関数デリゲート版。アプリ既存コードとの互換用。
-        /// </summary>
-        public static void ConstrainPosePreservingWorldPoint(
-            Vector3 position,
-            Quaternion rotation,
-            Func<Quaternion, Quaternion> rotationConstraint,
-            Vector3 worldPivot,
-            out Vector3 constrainedPosition,
-            out Quaternion constrainedRotation)
-        {
-            constrainedRotation = rotationConstraint(rotation);
-            constrainedPosition = ComputePositionPreservingWorldPoint(
-                position,
-                rotation,
-                constrainedRotation,
-                worldPivot);
-        }
-
-        /// <summary>
         /// 候補のトラッキング原点姿勢に水平制約を適用する（HMD / XR Origin 適用の推奨ヘルパー）。
         /// </summary>
         public static void ComputeTrackingOriginPose(

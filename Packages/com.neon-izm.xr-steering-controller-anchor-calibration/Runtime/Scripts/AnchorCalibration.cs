@@ -9,8 +9,9 @@ namespace XrSteeringControllerAnchorCalibration
         const float MinVectorSqrMagnitude = 1e-8f;
 
         /// <summary>
-        /// HMD 世界座標の軌跡と頭姿勢から円を推定し、既知の CG ハンドル姿勢へ合わせる ModelView を求める。
-        /// 前後は頭位置で選択し、ハンドル局所 roll を除去する。
+        /// HMD 世界座標の軌跡と頭位置から円を推定し、既知の CG ハンドル姿勢へ合わせる ModelView を求める。
+        /// 前後は頭位置で選択する。roll は VR-HMD の水平面制約（<see cref="Vector3.up"/> が真上）で 0 にする。
+        /// 頭の回転（pitch/roll）はロール解決に使わない。
         /// </summary>
         public static CalibrationResult Calibrate(
             IReadOnlyList<Vector3> worldPoints,
@@ -64,23 +65,23 @@ namespace XrSteeringControllerAnchorCalibration
         }
 
         /// <summary>
-        /// 頭姿勢ヒントでフィット円の平面内位相を決定する。
+        /// VR-HMD の水平面制約（ワールド up = 真上）でフィット円の平面内位相を決め、roll=0 にする。
+        /// 頭の pitch / forward は使わない（recenter 前向きを pitch と誤認しない）。
         /// </summary>
-        public static Circle3D OrientCircleWithHeadHint(Circle3D rawFit, HeadPose headPose)
+        public static Circle3D OrientCircleWithWorldUp(Circle3D rawFit, Vector3 referenceUp = default)
         {
             var normal = rawFit.Normal.normalized;
-            var headUp = headPose.Rotation * Vector3.up;
-            var upOnPlane = Vector3.ProjectOnPlane(headUp, normal);
+            var up = referenceUp.sqrMagnitude < MinVectorSqrMagnitude ? Vector3.up : referenceUp.normalized;
+            var upOnPlane = Vector3.ProjectOnPlane(up, normal);
 
             if (upOnPlane.sqrMagnitude < MinVectorSqrMagnitude)
             {
-                var headForward = headPose.Rotation * Vector3.forward;
-                upOnPlane = Vector3.ProjectOnPlane(headForward, normal);
+                upOnPlane = Vector3.ProjectOnPlane(Vector3.forward, normal);
             }
 
             if (upOnPlane.sqrMagnitude < MinVectorSqrMagnitude)
             {
-                upOnPlane = Vector3.ProjectOnPlane(Vector3.up, normal);
+                upOnPlane = Vector3.ProjectOnPlane(Vector3.right, normal);
             }
 
             upOnPlane.Normalize();
@@ -123,20 +124,6 @@ namespace XrSteeringControllerAnchorCalibration
         }
 
         /// <summary>
-        /// 前後 2 候補の ModelView から、頭が運転席側になる方を選ぶ。
-        /// </summary>
-        public static Matrix4x4 SelectFrontBackCandidate(
-            Matrix4x4 modelViewA,
-            Matrix4x4 modelViewB,
-            HeadPose headPose,
-            CgHandlePose targetHandle)
-        {
-            var scoreA = ScoreDriverSeat(modelViewA, headPose, targetHandle);
-            var scoreB = ScoreDriverSeat(modelViewB, headPose, targetHandle);
-            return scoreA >= scoreB ? modelViewA : modelViewB;
-        }
-
-        /// <summary>
         /// 頭が運転席側（ハンドル Back）に写っているか。
         /// </summary>
         public static bool IsOnDriverSeatSide(Matrix4x4 modelView, HeadPose headPose, CgHandlePose targetHandle)
@@ -176,7 +163,7 @@ namespace XrSteeringControllerAnchorCalibration
         }
 
         /// <summary>
-        /// 円フィット → 頭ヒント位相 → 前後選択 → roll 除去までの一連処理。
+        /// 円フィット → ワールド up で roll=0 → 前後選択 → ハンドル局所 roll 除去。
         /// </summary>
         public static Matrix4x4 ComputeCalibratedModelView(
             Circle3D rawFit,
@@ -188,8 +175,8 @@ namespace XrSteeringControllerAnchorCalibration
         }
 
         /// <summary>
-        /// 円フィット → 頭ヒント位相 → 前後選択 → roll 除去までの一連処理。
-        /// orientedCircleUsed は採用候補の姿勢付き円。
+        /// 円フィット → ワールド up で roll=0 → 前後選択 → ハンドル局所 roll 除去。
+        /// orientedCircleUsed は採用候補の姿勢付き円。頭の Rotation は未使用（Position のみ前後に使用）。
         /// </summary>
         public static Matrix4x4 ComputeCalibratedModelView(
             Circle3D rawFit,
@@ -198,7 +185,7 @@ namespace XrSteeringControllerAnchorCalibration
             bool forceFlippedCandidate,
             out Circle3D orientedCircleUsed)
         {
-            var oriented = OrientCircleWithHeadHint(rawFit, headPose);
+            var oriented = OrientCircleWithWorldUp(rawFit);
             var flipped = FlipCircleNormalInPlane(oriented);
 
             var modelViewA = RemoveHandleLocalRoll(ComputeModelView(oriented, targetHandle), oriented, targetHandle);
@@ -219,26 +206,6 @@ namespace XrSteeringControllerAnchorCalibration
 
             orientedCircleUsed = flipped;
             return modelViewB;
-        }
-
-        [Obsolete("前後解決には使わない。AlignNormalToTargetForward は半球合わせのみで運転席側を保証しない。")]
-        public static Circle3D AlignNormalToTargetForward(Circle3D circle, Vector3 targetForward)
-        {
-            var reference = targetForward.normalized;
-            if (reference.sqrMagnitude < MinVectorSqrMagnitude)
-            {
-                return circle;
-            }
-
-            if (Vector3.Dot(circle.Normal, reference) < 0f)
-            {
-                return new Circle3D(
-                    circle.Center,
-                    CircleFitting3D.RotationFromNormal(-circle.Normal),
-                    circle.Radius);
-            }
-
-            return circle;
         }
 
         /// <summary>
@@ -268,17 +235,6 @@ namespace XrSteeringControllerAnchorCalibration
             return cgPoints;
         }
 
-        /// <summary>
-        /// 半径スケールも含む変換。物理半径と CG 半径の両方が既知の場合に使用。
-        /// </summary>
-        public static Matrix4x4 ComputeModelViewWithScale(Circle3D estimatedWorld, Circle3D targetCg)
-        {
-            var scale = targetCg.Radius / estimatedWorld.Radius;
-            var rotation = targetCg.Rotation * Quaternion.Inverse(estimatedWorld.Rotation);
-            var translation = targetCg.Position - rotation * (estimatedWorld.Position * scale);
-            return Matrix4x4.TRS(translation, rotation, Vector3.one * scale);
-        }
-
         public static Circle3D TransformCircleRigid(Matrix4x4 modelView, Circle3D circleWorld)
         {
             var center = modelView.MultiplyPoint3x4(circleWorld.Position);
@@ -286,14 +242,6 @@ namespace XrSteeringControllerAnchorCalibration
             var up = modelView.MultiplyVector(circleWorld.Rotation * Vector3.up);
             var rotation = Quaternion.LookRotation(forward, up);
             return new Circle3D(center, rotation, circleWorld.Radius);
-        }
-
-        public static Circle3D TransformCircle(Matrix4x4 transform, Circle3D circle)
-        {
-            var scale = transform.lossyScale.x;
-            var center = transform.MultiplyPoint3x4(circle.Position);
-            var rotation = transform.rotation * circle.Rotation;
-            return new Circle3D(center, rotation, circle.Radius * scale);
         }
 
         static float GetSignedTwistAngle(Quaternion from, Quaternion to, Vector3 axis)

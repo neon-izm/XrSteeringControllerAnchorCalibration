@@ -73,7 +73,8 @@ namespace XrSteeringControllerAnchorCalibration
     }
 
     /// <summary>
-    /// HMD / 頭の世界座標姿勢。前後・roll 解決に使用する。
+    /// HMD / 頭の世界座標姿勢。前後解決には Position のみ使用。
+    /// Rotation はロール解決に使わない（VR-HMD では Vector3.up が真上）。
     /// </summary>
     public readonly struct HeadPose
     {

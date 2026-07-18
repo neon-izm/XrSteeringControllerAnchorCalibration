@@ -13,13 +13,19 @@
     "directory": "Packages/com.neon-izm.xr-steering-controller-anchor-calibration"
   },
   "license": "MIT",
+  "dependencies": {
+    "com.unity.burst": "1.8.28",
+    "com.unity.collections": "2.6.2",
+    "com.unity.mathematics": "1.3.3"
+  },
   "keywords": [
     "xr",
     "calibration",
     "hand-tracking",
     "circle-fitting",
     "msac",
-    "openxr"
+    "openxr",
+    "burst"
   ],
   "samples": [
     {

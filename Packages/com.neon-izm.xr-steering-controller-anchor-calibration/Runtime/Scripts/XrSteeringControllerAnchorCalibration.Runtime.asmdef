@@ -1,7 +1,11 @@
 {
     "name": "XrSteeringControllerAnchorCalibration.Runtime",
     "rootNamespace": "XrSteeringControllerAnchorCalibration",
-    "references": [],
+    "references": [
+        "Unity.Burst",
+        "Unity.Collections",
+        "Unity.Mathematics"
+    ],
     "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,

@@ -31,10 +31,10 @@ namespace XrSteeringControllerAnchorCalibration.Tests
 
             public float expectedCircleRadiusApprox;
             public float expectedNormalDotUpApprox;
-            public float expectedMaxHandleLocalRollDeg = 5f;
+            public float expectedMaxHandleLocalRollDeg = 1e-2f;
             public bool expectedRequireDriverSeatSide = true;
             public float expectedRadiusTolerance = 0.02f;
-            public float expectedNormalDotTolerance = 0.05f;
+            public float expectedNormalDotTolerance = 0.005f;
         }
 
         public readonly struct Session

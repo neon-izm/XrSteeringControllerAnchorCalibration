@@ -1,5 +1,8 @@
 using System;
 using System.Collections.Generic;
+using Unity.Burst;
+using Unity.Collections;
+using Unity.Mathematics;
 using UnityEngine;
 
 namespace XrSteeringControllerAnchorCalibration
@@ -9,28 +12,17 @@ namespace XrSteeringControllerAnchorCalibration
         public const float DefaultThreshold = 0.005f;
         public const float CollinearityEpsilon = 1e-10f;
 
+        /// <summary>
+        /// Hard ceiling for adaptive MSAC growth when <c>maxIterations &lt;= 0</c>.
+        /// Without this, a temporarily low inlier ratio can request ~1e5–1e6 iterations
+        /// and stall Android HMDs for tens of seconds. 50000 preserves Quest device-fixture
+        /// normals (seeded MSAC) while still cutting the uncapped ~250k worst case.
+        /// </summary>
+        public const int DefaultMaxAdaptiveIterations = 50000;
+
         public static Circle3D? CircleFrom3Points(Vector3 a, Vector3 b, Vector3 c)
         {
-            var t = b - a;
-            var u = c - a;
-            var v = c - b;
-            var w = Vector3.Cross(t, u);
-            var wsl = Vector3.Dot(w, w);
-
-            if (wsl < CollinearityEpsilon)
-            {
-                return null;
-            }
-
-            var iwsl2 = 1f / (2f * wsl);
-            var tt = Vector3.Dot(t, t);
-            var uu = Vector3.Dot(u, u);
-
-            var center = a + (u * tt * Vector3.Dot(u, v) - t * uu * Vector3.Dot(t, v)) * iwsl2;
-            var radius = Mathf.Sqrt(tt * uu * Vector3.Dot(v, v) * iwsl2 * 0.5f);
-            var normal = w / Mathf.Sqrt(wsl);
-
-            if (radius < 1e-6f || float.IsNaN(radius))
+            if (!CircleFittingBurst.TryCircleFrom3Points(a, b, c, out var center, out var normal, out var radius))
             {
                 return null;
             }
@@ -40,15 +32,8 @@ namespace XrSteeringControllerAnchorCalibration
 
         public static float DistanceToCircle(Vector3 point, Circle3D circle)
         {
-            var v = point - circle.Center;
-            var normal = circle.Normal;
-            var projOnNormal = Vector3.Dot(v, normal) * normal;
-            var vInPlane = v - projOnNormal;
-
-            var distRadial = vInPlane.magnitude - circle.Radius;
-            var distAxial = projOnNormal.magnitude;
-
-            return Mathf.Sqrt(distRadial * distRadial + distAxial * distAxial);
+            var distSq = CircleFittingBurst.DistanceToCircleSq(point, circle.Center, circle.Normal, circle.Radius);
+            return Mathf.Sqrt(distSq);
         }
 
         public static CircleFitResult FitCircleMsac(
@@ -66,72 +51,93 @@ namespace XrSteeringControllerAnchorCalibration
             random ??= new System.Random();
             var pointCount = points.Count;
             var thresholdSq = threshold * threshold;
+
+            // maxIterations > 0 is a hard ceiling. Otherwise adapt up to DefaultMaxAdaptiveIterations.
+            var iterationCap = maxIterations > 0 ? maxIterations : DefaultMaxAdaptiveIterations;
             var iterations = maxIterations > 0
                 ? maxIterations
                 : Mathf.Max(50, EstimateIterationCount(0.9f, successProbability));
+            iterations = Mathf.Min(iterations, iterationCap);
 
-            Circle3D? bestCircle = null;
-            var bestScore = float.MaxValue;
-            var bestInliers = Array.Empty<int>();
-
-            for (var i = 0; i < iterations; i++)
+            var nativePoints = new NativeArray<float3>(pointCount, Allocator.TempJob);
+            var inlierBuffer = new NativeArray<int>(pointCount, Allocator.TempJob);
+            try
             {
-                var i0 = random.Next(pointCount);
-                var i1 = random.Next(pointCount);
-                var i2 = random.Next(pointCount);
-
-                if (i0 == i1 || i1 == i2 || i0 == i2)
+                for (var i = 0; i < pointCount; i++)
                 {
-                    continue;
+                    nativePoints[i] = points[i];
                 }
 
-                var candidate = CircleFrom3Points(points[i0], points[i1], points[i2]);
-                if (!candidate.HasValue)
+                Circle3D? bestCircle = null;
+                var bestScore = float.MaxValue;
+                var bestInliers = Array.Empty<int>();
+
+                for (var i = 0; i < iterations; i++)
                 {
-                    continue;
-                }
+                    var i0 = random.Next(pointCount);
+                    var i1 = random.Next(pointCount);
+                    var i2 = random.Next(pointCount);
 
-                var circle = candidate.Value;
-                var score = 0f;
-                var inlierCount = 0;
-
-                for (var j = 0; j < pointCount; j++)
-                {
-                    var dist = DistanceToCircle(points[j], circle);
-                    var distSq = dist * dist;
-                    score += distSq < thresholdSq ? distSq : thresholdSq;
-
-                    if (distSq < thresholdSq)
+                    if (i0 == i1 || i1 == i2 || i0 == i2)
                     {
-                        inlierCount++;
+                        continue;
                     }
-                }
 
-                if (score < bestScore)
-                {
-                    bestScore = score;
-                    bestCircle = circle;
-                    bestInliers = CollectInliers(points, circle, threshold);
-
-                    if (inlierCount > 0)
+                    if (!CircleFittingBurst.TryCircleFrom3Points(
+                            nativePoints[i0], nativePoints[i1], nativePoints[i2],
+                            out var center, out var normal, out var radius))
                     {
-                        var inlierRatio = inlierCount / (float)pointCount;
-                        var adaptiveIterations = EstimateIterationCount(inlierRatio, successProbability);
-                        if (adaptiveIterations > iterations)
+                        continue;
+                    }
+
+                    CircleFittingBurst.ScoreCandidate(
+                        nativePoints, center, normal, radius, thresholdSq,
+                        out var score, out var inlierCount);
+
+                    if (score < bestScore)
+                    {
+                        bestScore = score;
+                        bestCircle = new Circle3D(center, RotationFromNormal(normal), radius);
+                        CircleFittingBurst.CollectInliers(
+                            nativePoints, center, normal, radius, threshold, inlierBuffer, out var collected);
+                        bestInliers = new int[collected];
+                        for (var k = 0; k < collected; k++)
                         {
-                            iterations = adaptiveIterations;
+                            bestInliers[k] = inlierBuffer[k];
+                        }
+
+                        if (inlierCount > 0)
+                        {
+                            var inlierRatio = inlierCount / (float)pointCount;
+                            var adaptiveIterations = EstimateIterationCount(inlierRatio, successProbability);
+                            if (adaptiveIterations > iterations)
+                            {
+                                iterations = Mathf.Min(adaptiveIterations, iterationCap);
+                            }
                         }
                     }
                 }
-            }
 
-            if (!bestCircle.HasValue || bestInliers.Length < 3)
+                if (!bestCircle.HasValue || bestInliers.Length < 3)
+                {
+                    throw new InvalidOperationException("MSAC failed to find a valid circle model.");
+                }
+
+                var refined = RefineWithInliers(points, bestInliers);
+                return new CircleFitResult(refined, bestInliers);
+            }
+            finally
             {
-                throw new InvalidOperationException("MSAC failed to find a valid circle model.");
-            }
+                if (nativePoints.IsCreated)
+                {
+                    nativePoints.Dispose();
+                }
 
-            var refined = RefineWithInliers(points, bestInliers);
-            return new CircleFitResult(refined, bestInliers);
+                if (inlierBuffer.IsCreated)
+                {
+                    inlierBuffer.Dispose();
+                }
+            }
         }
 
         public static Circle3D RefineWithInliers(IReadOnlyList<Vector3> points, IReadOnlyList<int> inlierIndices)
@@ -167,7 +173,7 @@ namespace XrSteeringControllerAnchorCalibration
             cov.M21 = cov.M12;
             cov /= inlierCount;
 
-            var (eigenvalues, eigenvectors) = SymmetricEigenDecomposition3x3.Decompose(cov);
+            var (_, eigenvectors) = SymmetricEigenDecomposition3x3.Decompose(cov);
             var normal = eigenvectors[0].normalized;
             var u = eigenvectors[2].normalized;
             var v = Vector3.Cross(normal, u).normalized;
@@ -199,27 +205,10 @@ namespace XrSteeringControllerAnchorCalibration
             return Quaternion.LookRotation(forward, up);
         }
 
-        private static int[] CollectInliers(IReadOnlyList<Vector3> points, Circle3D circle, float threshold)
-        {
-            var thresholdSq = threshold * threshold;
-            var inliers = new List<int>(points.Count);
-            for (var i = 0; i < points.Count; i++)
-            {
-                var dist = DistanceToCircle(points[i], circle);
-                if (dist * dist < thresholdSq)
-                {
-                    inliers.Add(i);
-                }
-            }
-
-            return inliers.ToArray();
-        }
-
-        private static int EstimateIterationCount(float inlierRatio, float successProbability)
+        static int EstimateIterationCount(float inlierRatio, float successProbability)
         {
             inlierRatio = Mathf.Clamp(inlierRatio, 0.01f, 0.999f);
-            var sampleSize = 3f;
-            var w = Mathf.Pow(inlierRatio, sampleSize);
+            var w = Mathf.Pow(inlierRatio, 3f);
             if (w >= 0.999999f)
             {
                 return 50;
@@ -228,6 +217,111 @@ namespace XrSteeringControllerAnchorCalibration
             var logOneMinusP = Mathf.Log(1f - successProbability);
             var logOneMinusW = Mathf.Log(1f - w);
             return Mathf.CeilToInt(logOneMinusP / logOneMinusW);
+        }
+    }
+
+    /// <summary>
+    /// Burst entry points for the MSAC hot path (candidate scoring / inlier collection).
+    /// </summary>
+    [BurstCompile]
+    internal static class CircleFittingBurst
+    {
+        internal const float DefaultThreshold = 0.005f;
+        internal const float CollinearityEpsilon = 1e-10f;
+
+        [BurstCompile(CompileSynchronously = true)]
+        public static void ScoreCandidate(
+            in NativeArray<float3> points,
+            float3 center,
+            float3 normal,
+            float radius,
+            float thresholdSq,
+            out float score,
+            out int inlierCount)
+        {
+            score = 0f;
+            inlierCount = 0;
+            for (var j = 0; j < points.Length; j++)
+            {
+                var dist = math.sqrt(DistanceToCircleSq(points[j], center, normal, radius));
+                var distSq = dist * dist;
+                score += distSq < thresholdSq ? distSq : thresholdSq;
+                if (distSq < thresholdSq)
+                {
+                    inlierCount++;
+                }
+            }
+        }
+
+        [BurstCompile(CompileSynchronously = true)]
+        public static void CollectInliers(
+            in NativeArray<float3> points,
+            float3 center,
+            float3 normal,
+            float radius,
+            float threshold,
+            NativeArray<int> inliers,
+            out int count)
+        {
+            var thresholdSq = threshold * threshold;
+            count = 0;
+            for (var i = 0; i < points.Length; i++)
+            {
+                var dist = math.sqrt(DistanceToCircleSq(points[i], center, normal, radius));
+                if (dist * dist < thresholdSq)
+                {
+                    inliers[count++] = i;
+                }
+            }
+        }
+
+        [BurstCompile(CompileSynchronously = true)]
+        public static bool TryCircleFrom3Points(
+            float3 a,
+            float3 b,
+            float3 c,
+            out float3 center,
+            out float3 normal,
+            out float radius)
+        {
+            center = default;
+            normal = default;
+            radius = 0f;
+
+            var t = b - a;
+            var u = c - a;
+            var v = c - b;
+            var w = math.cross(t, u);
+            var wsl = math.dot(w, w);
+            if (wsl < CollinearityEpsilon)
+            {
+                return false;
+            }
+
+            var iwsl2 = 1f / (2f * wsl);
+            var tt = math.dot(t, t);
+            var uu = math.dot(u, u);
+
+            center = a + (u * tt * math.dot(u, v) - t * uu * math.dot(t, v)) * iwsl2;
+            radius = math.sqrt(tt * uu * math.dot(v, v) * iwsl2 * 0.5f);
+            normal = w / math.sqrt(wsl);
+
+            if (radius < 1e-6f || !math.isfinite(radius))
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        public static float DistanceToCircleSq(float3 point, float3 center, float3 normal, float radius)
+        {
+            var delta = point - center;
+            var projOnNormal = math.dot(delta, normal) * normal;
+            var vInPlane = delta - projOnNormal;
+            var distRadial = math.length(vInPlane) - radius;
+            var distAxial = math.length(projOnNormal);
+            return distRadial * distRadial + distAxial * distAxial;
         }
     }
 
@@ -375,40 +469,6 @@ namespace XrSteeringControllerAnchorCalibration
             }
 
             eigenvalues = new float[] { a[0, 0], a[1, 1], a[2, 2] };
-        }
-    }
-
-    internal static class SymmetricLinearSolver3x3
-    {
-        public static bool TrySolve(Matrix3x3 a, Vector3 b, out Vector3 x)
-        {
-            var det =
-                a.M00 * (a.M11 * a.M22 - a.M12 * a.M21) -
-                a.M01 * (a.M10 * a.M22 - a.M12 * a.M20) +
-                a.M02 * (a.M10 * a.M21 - a.M11 * a.M20);
-
-            if (Mathf.Abs(det) < 1e-12f)
-            {
-                x = default;
-                return false;
-            }
-
-            var invDet = 1f / det;
-            var i00 = (a.M11 * a.M22 - a.M12 * a.M21) * invDet;
-            var i01 = (a.M02 * a.M21 - a.M01 * a.M22) * invDet;
-            var i02 = (a.M01 * a.M12 - a.M02 * a.M11) * invDet;
-            var i10 = (a.M12 * a.M20 - a.M10 * a.M22) * invDet;
-            var i11 = (a.M00 * a.M22 - a.M02 * a.M20) * invDet;
-            var i12 = (a.M02 * a.M10 - a.M00 * a.M12) * invDet;
-            var i20 = (a.M10 * a.M21 - a.M11 * a.M20) * invDet;
-            var i21 = (a.M01 * a.M20 - a.M00 * a.M21) * invDet;
-            var i22 = (a.M00 * a.M11 - a.M01 * a.M10) * invDet;
-
-            x = new Vector3(
-                i00 * b.x + i01 * b.y + i02 * b.z,
-                i10 * b.x + i11 * b.y + i12 * b.z,
-                i20 * b.x + i21 * b.y + i22 * b.z);
-            return true;
         }
     }
 }

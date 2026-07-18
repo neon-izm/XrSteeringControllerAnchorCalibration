@@ -8,8 +8,11 @@ namespace XrSteeringControllerAnchorCalibration.Tests
     public class AnchorCalibrationTests
     {
         const float CenterTolerance = 0.001f;
-        const float AngleToleranceDeg = 1f;
-        const float RollToleranceDeg = 5f;
+        const float AngleToleranceDeg = 0.1f;
+        /// <summary>
+        /// RemoveHandleLocalRoll 後の相対 roll は代数的に 0。数値誤差のみ許容。
+        /// </summary>
+        const float RollToleranceDeg = 1e-2f;
 
         [Test]
         public void StoredModelView_RoundTrip_PreservesRigidTransform()
@@ -277,7 +280,7 @@ namespace XrSteeringControllerAnchorCalibration.Tests
             var mapped = AnchorCalibration.TransformCircleRigid(result.ModelView, oriented);
 
             Assert.That(Vector3.Distance(mapped.Position, targetHandle.Position), Is.LessThan(0.01f));
-            Assert.That(Vector3.Angle(mapped.Normal, targetHandle.Forward), Is.LessThan(3f));
+            Assert.That(Vector3.Angle(mapped.Normal, targetHandle.Forward), Is.LessThan(AngleToleranceDeg));
             Assert.That(Mathf.Abs(mapped.Radius - data.GroundTruth.Radius), Is.LessThan(0.01f));
             Assert.That(AnchorCalibration.IsOnDriverSeatSide(result.ModelView, headPose, targetHandle), Is.True);
         }

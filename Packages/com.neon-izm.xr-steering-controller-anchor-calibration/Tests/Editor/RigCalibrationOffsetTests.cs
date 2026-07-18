@@ -41,7 +41,6 @@ namespace XrSteeringControllerAnchorCalibration.Tests
                 Assert.That(Vector3.Distance(trackingOrigin.position, originBefore), Is.LessThan(Tolerance));
                 Assert.That(Quaternion.Angle(trackingOrigin.rotation, originRotBefore), Is.LessThan(0.1f));
                 Assert.That(Vector3.Distance(cgHandle.position, estimatedWorldPos), Is.LessThan(0.02f));
-                Assert.That(Mathf.Abs(result.HubTwistAppliedDeg), Is.GreaterThanOrEqualTo(0f));
 
                 var axis = cgHandle.forward.normalized;
                 var handleUpOnPlane = Vector3.ProjectOnPlane(cgHandle.up, axis).normalized;

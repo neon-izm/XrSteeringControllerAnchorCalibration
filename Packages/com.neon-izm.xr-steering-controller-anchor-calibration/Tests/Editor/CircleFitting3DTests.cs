@@ -10,7 +10,8 @@ namespace XrSteeringControllerAnchorCalibration.Tests
     {
         private const float CenterTolerance = 0.005f;
         private const float RadiusTolerance = 0.003f;
-        private const float AngleToleranceDeg = 2f;
+        /// <summary>ノイズなし〜軽ノイズ。外れ値多めはテスト内で個別指定。</summary>
+        private const float AngleToleranceDeg = 1f;
 
         [Test]
         public void Circle3D_ExposesPositionAndRotation()
@@ -139,7 +140,7 @@ namespace XrSteeringControllerAnchorCalibration.Tests
 
             AssertCenter(result.Circle, data.GroundTruth.Center, tolerance: 0.01f);
             AssertRadius(result.Circle, data.GroundTruth.Radius, tolerance: 0.005f);
-            AssertNormalAngle(result.Circle, data.GroundTruth.Normal);
+            AssertNormalAngle(result.Circle, data.GroundTruth.Normal, toleranceDeg: 1.5f);
             Assert.That(result.InlierIndices.Length, Is.GreaterThan(140));
         }
 

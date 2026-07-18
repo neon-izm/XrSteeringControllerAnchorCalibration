@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Unity.Burst;
 using Unity.Collections;
+using Unity.Jobs;
 using Unity.Mathematics;
 using UnityEngine;
 
@@ -19,6 +20,8 @@ namespace XrSteeringControllerAnchorCalibration
         /// normals (seeded MSAC) while still cutting the uncapped ~250k worst case.
         /// </summary>
         public const int DefaultMaxAdaptiveIterations = 50000;
+
+        const int ParallelInnerBatchSize = 32;
 
         public static Circle3D? CircleFrom3Points(Vector3 a, Vector3 b, Vector3 c)
         {
@@ -60,6 +63,12 @@ namespace XrSteeringControllerAnchorCalibration
             iterations = Mathf.Min(iterations, iterationCap);
 
             var nativePoints = new NativeArray<float3>(pointCount, Allocator.TempJob);
+            var triples = new NativeArray<int3>(iterationCap, Allocator.TempJob);
+            var scores = new NativeArray<float>(iterationCap, Allocator.TempJob);
+            var inlierCounts = new NativeArray<int>(iterationCap, Allocator.TempJob);
+            var centers = new NativeArray<float3>(iterationCap, Allocator.TempJob);
+            var normals = new NativeArray<float3>(iterationCap, Allocator.TempJob);
+            var radii = new NativeArray<float>(iterationCap, Allocator.TempJob);
             var inlierBuffer = new NativeArray<int>(pointCount, Allocator.TempJob);
             try
             {
@@ -68,54 +77,76 @@ namespace XrSteeringControllerAnchorCalibration
                     nativePoints[i] = points[i];
                 }
 
+                // Pre-sample with System.Random so parallel batches keep the same draw order as sequential MSAC.
+                for (var i = 0; i < iterationCap; i++)
+                {
+                    triples[i] = new int3(random.Next(pointCount), random.Next(pointCount), random.Next(pointCount));
+                    scores[i] = float.MaxValue;
+                }
+
                 Circle3D? bestCircle = null;
                 var bestScore = float.MaxValue;
                 var bestInliers = Array.Empty<int>();
+                var scoredUpTo = 0;
+                var candidateIndex = 0;
 
-                for (var i = 0; i < iterations; i++)
+                while (candidateIndex < iterations)
                 {
-                    var i0 = random.Next(pointCount);
-                    var i1 = random.Next(pointCount);
-                    var i2 = random.Next(pointCount);
-
-                    if (i0 == i1 || i1 == i2 || i0 == i2)
+                    if (scoredUpTo < iterations)
                     {
+                        ScheduleScoreCandidates(
+                            nativePoints,
+                            triples,
+                            scores,
+                            inlierCounts,
+                            centers,
+                            normals,
+                            radii,
+                            thresholdSq,
+                            start: scoredUpTo,
+                            count: iterations - scoredUpTo);
+                        scoredUpTo = iterations;
+                    }
+
+                    var score = scores[candidateIndex];
+                    if (!(score < bestScore))
+                    {
+                        candidateIndex++;
                         continue;
                     }
 
-                    if (!CircleFittingBurst.TryCircleFrom3Points(
-                            nativePoints[i0], nativePoints[i1], nativePoints[i2],
-                            out var center, out var normal, out var radius))
+                    bestScore = score;
+                    var center = centers[candidateIndex];
+                    var normal = normals[candidateIndex];
+                    var radius = radii[candidateIndex];
+                    bestCircle = new Circle3D(center, RotationFromNormal(normal), radius);
+
+                    ScheduleCollectInliers(
+                        nativePoints, center, normal, radius, threshold, inlierBuffer, out var collected);
+                    if (collected < 3)
                     {
+                        candidateIndex++;
                         continue;
                     }
 
-                    CircleFittingBurst.ScoreCandidate(
-                        nativePoints, center, normal, radius, thresholdSq,
-                        out var score, out var inlierCount);
-
-                    if (score < bestScore)
+                    bestInliers = new int[collected];
+                    for (var k = 0; k < collected; k++)
                     {
-                        bestScore = score;
-                        bestCircle = new Circle3D(center, RotationFromNormal(normal), radius);
-                        CircleFittingBurst.CollectInliers(
-                            nativePoints, center, normal, radius, threshold, inlierBuffer, out var collected);
-                        bestInliers = new int[collected];
-                        for (var k = 0; k < collected; k++)
-                        {
-                            bestInliers[k] = inlierBuffer[k];
-                        }
+                        bestInliers[k] = inlierBuffer[k];
+                    }
 
-                        if (inlierCount > 0)
+                    var inlierCount = inlierCounts[candidateIndex];
+                    if (inlierCount > 0)
+                    {
+                        var inlierRatio = inlierCount / (float)pointCount;
+                        var adaptiveIterations = EstimateIterationCount(inlierRatio, successProbability);
+                        if (adaptiveIterations > iterations)
                         {
-                            var inlierRatio = inlierCount / (float)pointCount;
-                            var adaptiveIterations = EstimateIterationCount(inlierRatio, successProbability);
-                            if (adaptiveIterations > iterations)
-                            {
-                                iterations = Mathf.Min(adaptiveIterations, iterationCap);
-                            }
+                            iterations = Mathf.Min(adaptiveIterations, iterationCap);
                         }
                     }
+
+                    candidateIndex++;
                 }
 
                 if (!bestCircle.HasValue || bestInliers.Length < 3)
@@ -128,15 +159,14 @@ namespace XrSteeringControllerAnchorCalibration
             }
             finally
             {
-                if (nativePoints.IsCreated)
-                {
-                    nativePoints.Dispose();
-                }
-
-                if (inlierBuffer.IsCreated)
-                {
-                    inlierBuffer.Dispose();
-                }
+                DisposeIfCreated(nativePoints);
+                DisposeIfCreated(triples);
+                DisposeIfCreated(scores);
+                DisposeIfCreated(inlierCounts);
+                DisposeIfCreated(centers);
+                DisposeIfCreated(normals);
+                DisposeIfCreated(radii);
+                DisposeIfCreated(inlierBuffer);
             }
         }
 
@@ -205,6 +235,77 @@ namespace XrSteeringControllerAnchorCalibration
             return Quaternion.LookRotation(forward, up);
         }
 
+        static void ScheduleScoreCandidates(
+            NativeArray<float3> points,
+            NativeArray<int3> triples,
+            NativeArray<float> scores,
+            NativeArray<int> inlierCounts,
+            NativeArray<float3> centers,
+            NativeArray<float3> normals,
+            NativeArray<float> radii,
+            float thresholdSq,
+            int start,
+            int count)
+        {
+            if (count <= 0)
+            {
+                return;
+            }
+
+            var job = new CircleFittingBurst.ScoreCandidatesJob
+            {
+                Points = points,
+                Triples = triples,
+                ThresholdSq = thresholdSq,
+                Start = start,
+                Scores = scores,
+                InlierCounts = inlierCounts,
+                Centers = centers,
+                Normals = normals,
+                Radii = radii
+            };
+            job.Schedule(count, ParallelInnerBatchSize).Complete();
+        }
+
+        static void ScheduleCollectInliers(
+            NativeArray<float3> points,
+            float3 center,
+            float3 normal,
+            float radius,
+            float threshold,
+            NativeArray<int> inliers,
+            out int count)
+        {
+            var countBuf = new NativeArray<int>(1, Allocator.TempJob);
+            try
+            {
+                var job = new CircleFittingBurst.CollectInliersJob
+                {
+                    Points = points,
+                    Center = center,
+                    Normal = normal,
+                    Radius = radius,
+                    Threshold = threshold,
+                    Inliers = inliers,
+                    OutCount = countBuf
+                };
+                job.Schedule().Complete();
+                count = countBuf[0];
+            }
+            finally
+            {
+                countBuf.Dispose();
+            }
+        }
+
+        static void DisposeIfCreated<T>(NativeArray<T> array) where T : struct
+        {
+            if (array.IsCreated)
+            {
+                array.Dispose();
+            }
+        }
+
         static int EstimateIterationCount(float inlierRatio, float successProbability)
         {
             inlierRatio = Mathf.Clamp(inlierRatio, 0.01f, 0.999f);
@@ -221,61 +322,96 @@ namespace XrSteeringControllerAnchorCalibration
     }
 
     /// <summary>
-    /// Burst entry points for the MSAC hot path (candidate scoring / inlier collection).
+    /// Burst jobs for MSAC candidate scoring (parallel) and inlier collection.
     /// </summary>
     [BurstCompile]
     internal static class CircleFittingBurst
     {
-        internal const float DefaultThreshold = 0.005f;
         internal const float CollinearityEpsilon = 1e-10f;
 
         [BurstCompile(CompileSynchronously = true)]
-        public static void ScoreCandidate(
-            in NativeArray<float3> points,
-            float3 center,
-            float3 normal,
-            float radius,
-            float thresholdSq,
-            out float score,
-            out int inlierCount)
+        public struct ScoreCandidatesJob : IJobParallelFor
         {
-            score = 0f;
-            inlierCount = 0;
-            for (var j = 0; j < points.Length; j++)
+            [ReadOnly] public NativeArray<float3> Points;
+            [ReadOnly] public NativeArray<int3> Triples;
+            public float ThresholdSq;
+            public int Start;
+
+            // Execute(index) writes absolute slots Start+index.
+            [NativeDisableParallelForRestriction] public NativeArray<float> Scores;
+            [NativeDisableParallelForRestriction] public NativeArray<int> InlierCounts;
+            [NativeDisableParallelForRestriction] public NativeArray<float3> Centers;
+            [NativeDisableParallelForRestriction] public NativeArray<float3> Normals;
+            [NativeDisableParallelForRestriction] public NativeArray<float> Radii;
+
+            public void Execute(int index)
             {
-                var dist = math.sqrt(DistanceToCircleSq(points[j], center, normal, radius));
-                var distSq = dist * dist;
-                score += distSq < thresholdSq ? distSq : thresholdSq;
-                if (distSq < thresholdSq)
+                var absIndex = Start + index;
+                var sample = Triples[absIndex];
+                var i0 = sample.x;
+                var i1 = sample.y;
+                var i2 = sample.z;
+
+                if (i0 == i1 || i1 == i2 || i0 == i2
+                    || !TryCircleFrom3Points(Points[i0], Points[i1], Points[i2], out var center, out var normal, out var radius))
                 {
-                    inlierCount++;
+                    Scores[absIndex] = float.MaxValue;
+                    InlierCounts[absIndex] = 0;
+                    Centers[absIndex] = default;
+                    Normals[absIndex] = default;
+                    Radii[absIndex] = 0f;
+                    return;
                 }
+
+                var score = 0f;
+                var inlierCount = 0;
+                for (var j = 0; j < Points.Length; j++)
+                {
+                    var dist = math.sqrt(DistanceToCircleSq(Points[j], center, normal, radius));
+                    var distSq = dist * dist;
+                    score += distSq < ThresholdSq ? distSq : ThresholdSq;
+                    if (distSq < ThresholdSq)
+                    {
+                        inlierCount++;
+                    }
+                }
+
+                Scores[absIndex] = score;
+                InlierCounts[absIndex] = inlierCount;
+                Centers[absIndex] = center;
+                Normals[absIndex] = normal;
+                Radii[absIndex] = radius;
             }
         }
 
         [BurstCompile(CompileSynchronously = true)]
-        public static void CollectInliers(
-            in NativeArray<float3> points,
-            float3 center,
-            float3 normal,
-            float radius,
-            float threshold,
-            NativeArray<int> inliers,
-            out int count)
+        public struct CollectInliersJob : IJob
         {
-            var thresholdSq = threshold * threshold;
-            count = 0;
-            for (var i = 0; i < points.Length; i++)
+            [ReadOnly] public NativeArray<float3> Points;
+            public float3 Center;
+            public float3 Normal;
+            public float Radius;
+            public float Threshold;
+            public NativeArray<int> Inliers;
+            public NativeArray<int> OutCount;
+
+            public void Execute()
             {
-                var dist = math.sqrt(DistanceToCircleSq(points[i], center, normal, radius));
-                if (dist * dist < thresholdSq)
+                var thresholdSq = Threshold * Threshold;
+                var count = 0;
+                for (var i = 0; i < Points.Length; i++)
                 {
-                    inliers[count++] = i;
+                    var dist = math.sqrt(DistanceToCircleSq(Points[i], Center, Normal, Radius));
+                    if (dist * dist < thresholdSq)
+                    {
+                        Inliers[count++] = i;
+                    }
                 }
+
+                OutCount[0] = count;
             }
         }
 
-        [BurstCompile(CompileSynchronously = true)]
         public static bool TryCircleFrom3Points(
             float3 a,
             float3 b,

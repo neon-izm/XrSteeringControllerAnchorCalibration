@@ -4,7 +4,7 @@ Unity package that estimates a rigid **ModelView** (HMD tracking space → CG ha
 
 Designed for **VR-HMD** tracking spaces where **`Vector3.up` is true world up** (gravity / IMU). That fact pins handle roll without using head pitch/roll.
 
-Version **0.5.0**
+Version **0.6.0**
 
 ## Install
 
@@ -19,7 +19,7 @@ Or in `Packages/manifest.json`:
 ```json
 {
   "dependencies": {
-    "com.neon-izm.xr-steering-controller-anchor-calibration": "https://github.com/neon-izm/XrSteeringControllerAnchorCalibration.git?path=Packages/com.neon-izm.xr-steering-controller-anchor-calibration#v0.5.0"
+    "com.neon-izm.xr-steering-controller-anchor-calibration": "https://github.com/neon-izm/XrSteeringControllerAnchorCalibration.git?path=Packages/com.neon-izm.xr-steering-controller-anchor-calibration#v0.6.0"
   }
 }
 ```
@@ -72,9 +72,17 @@ RigCalibrationOffset.ApplyContentRootAlignment(
     vehicleRoot,   // content root (usually cgHandle.parent)
     cgHandle,
     out ContentRootAlignmentResult align);
+
+// Optional: also zero world pitch of handle.forward (car nose level to horizon)
+RigCalibrationOffset.ApplyContentRootAlignment(
+    result.ModelView,
+    vehicleRoot,
+    cgHandle,
+    ContentPitchMode.LevelToHorizon,
+    out align);
 ```
 
-This places the content from ModelView, then twists about the handle hub so `handle.up` matches world up on the wheel plane.
+This places the content from ModelView, then twists about the handle hub so `handle.up` matches world up on the wheel plane. Default pitch mode is `PreserveFromCalibration` (keep CG pitch as truth). Pass `ContentPitchMode.LevelToHorizon` if the car should not appear nose-up / nose-down in the HMD.
 
 Typical scene:
 

@@ -1831,8 +1831,8 @@
   ],
   "expectedPhaseUp": "worldUp",
   "expectedCircleRadiusApprox": 0.158,
-  "expectedNormalDotUpApprox": 0.789,
-  "expectedMaxHandleLocalRollDeg": 5.0,
+  "expectedNormalDotUpApprox": 0.772,
+  "expectedMaxHandleLocalRollDeg": 0.01,
   "expectedRadiusTolerance": 0.03,
-  "expectedNormalDotTolerance": 0.05
+  "expectedNormalDotTolerance": 0.005
 }

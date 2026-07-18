@@ -35,16 +35,17 @@ namespace XrSteeringControllerAnchorCalibration.Tests
             var mapped = AnchorCalibration.TransformCircleRigid(modelView, orientedCircle);
 
             Assert.That(modelView, Is.Not.EqualTo(Matrix4x4.zero));
+            // ModelView + RemoveHandleLocalRoll 後は CG ハンドル姿勢に代数的に一致する。
             Assert.That(
                 Vector3.Distance(mapped.Position, session.Handle.Position),
-                Is.LessThan(0.02f));
+                Is.LessThan(1e-3f));
             Assert.That(
                 Vector3.Angle(mapped.Normal, session.Handle.Forward),
-                Is.LessThan(5f));
+                Is.LessThan(1e-2f));
 
             var maxRoll = dto.expectedMaxHandleLocalRollDeg > 0f
                 ? dto.expectedMaxHandleLocalRollDeg
-                : 5f;
+                : 1e-2f;
             Assert.That(Mathf.Abs(roll), Is.LessThan(maxRoll), $"handleLocalRollDeg={roll}");
 
             Assert.That(

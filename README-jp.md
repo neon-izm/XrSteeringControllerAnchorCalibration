@@ -4,7 +4,7 @@ HMD のハンドトラッキング軌跡（部分円弧）、既知の CG ハン
 
 **VR-HMD** 向けで、トラッキング空間の **`Vector3.up` が真上**（重力 / IMU）であることを前提にハンドル roll を固定します。頭の pitch/roll は使いません。
 
-バージョン **0.5.0**
+バージョン **0.6.0**
 
 UPM 構成は [uOSC](https://github.com/hecomi/uOSC) を参考にしています。
 
@@ -21,7 +21,7 @@ https://github.com/neon-izm/XrSteeringControllerAnchorCalibration.git?path=Packa
 ```json
 {
   "dependencies": {
-    "com.neon-izm.xr-steering-controller-anchor-calibration": "https://github.com/neon-izm/XrSteeringControllerAnchorCalibration.git?path=Packages/com.neon-izm.xr-steering-controller-anchor-calibration#v0.5.0"
+    "com.neon-izm.xr-steering-controller-anchor-calibration": "https://github.com/neon-izm/XrSteeringControllerAnchorCalibration.git?path=Packages/com.neon-izm.xr-steering-controller-anchor-calibration#v0.6.0"
   }
 }
 ```
@@ -74,9 +74,17 @@ RigCalibrationOffset.ApplyContentRootAlignment(
     vehicleRoot,   // コンテンツルート（通常は cgHandle.parent）
     cgHandle,
     out ContentRootAlignmentResult align);
+
+// 任意: handle.forward のワールド pitch も水平化（車の前傾・後傾を消す）
+RigCalibrationOffset.ApplyContentRootAlignment(
+    result.ModelView,
+    vehicleRoot,
+    cgHandle,
+    ContentPitchMode.LevelToHorizon,
+    out align);
 ```
 
-ModelView でコンテンツを置き、ハンドル hub まわりにツイストして `handle.up` をワールド up の平面投影に揃えます。
+ModelView でコンテンツを置き、ハンドル hub まわりにツイストして `handle.up` をワールド up の平面投影に揃えます。pitch の既定は `PreserveFromCalibration`（CG の pitch を真として残す）です。HMD 上で車が前傾・後傾して見えないようにしたい場合は `ContentPitchMode.LevelToHorizon` を渡してください。
 
 典型的なシーン:
 

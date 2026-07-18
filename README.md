@@ -4,7 +4,7 @@ Unity package that estimates a rigid **ModelView** (HMD tracking space → CG ha
 
 Designed for **VR-HMD** tracking spaces where **`Vector3.up` is true world up** (gravity / IMU). That fact pins handle roll without using head pitch/roll.
 
-Version **0.5.0**
+Version **0.6.0**
 
 ## Install
 
@@ -19,7 +19,7 @@ Or in `Packages/manifest.json`:
 ```json
 {
   "dependencies": {
-    "com.neon-izm.xr-steering-controller-anchor-calibration": "https://github.com/neon-izm/XrSteeringControllerAnchorCalibration.git?path=Packages/com.neon-izm.xr-steering-controller-anchor-calibration#v0.5.0"
+    "com.neon-izm.xr-steering-controller-anchor-calibration": "https://github.com/neon-izm/XrSteeringControllerAnchorCalibration.git?path=Packages/com.neon-izm.xr-steering-controller-anchor-calibration#v0.6.0"
   }
 }
 ```

@@ -4,7 +4,7 @@ HMD のハンドトラッキング軌跡（部分円弧）、既知の CG ハン
 
 **VR-HMD** 向けで、トラッキング空間の **`Vector3.up` が真上**（重力 / IMU）であることを前提にハンドル roll を固定します。頭の pitch/roll は使いません。
 
-バージョン **0.5.0**
+バージョン **0.6.0**
 
 UPM 構成は [uOSC](https://github.com/hecomi/uOSC) を参考にしています。
 
@@ -21,7 +21,7 @@ https://github.com/neon-izm/XrSteeringControllerAnchorCalibration.git?path=Packa
 ```json
 {
   "dependencies": {
-    "com.neon-izm.xr-steering-controller-anchor-calibration": "https://github.com/neon-izm/XrSteeringControllerAnchorCalibration.git?path=Packages/com.neon-izm.xr-steering-controller-anchor-calibration#v0.5.0"
+    "com.neon-izm.xr-steering-controller-anchor-calibration": "https://github.com/neon-izm/XrSteeringControllerAnchorCalibration.git?path=Packages/com.neon-izm.xr-steering-controller-anchor-calibration#v0.6.0"
   }
 }
 ```

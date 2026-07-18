@@ -74,9 +74,17 @@ RigCalibrationOffset.ApplyContentRootAlignment(
     vehicleRoot,   // コンテンツルート（通常は cgHandle.parent）
     cgHandle,
     out ContentRootAlignmentResult align);
+
+// 任意: handle.forward のワールド pitch も水平化（車の前傾・後傾を消す）
+RigCalibrationOffset.ApplyContentRootAlignment(
+    result.ModelView,
+    vehicleRoot,
+    cgHandle,
+    ContentPitchMode.LevelToHorizon,
+    out align);
 ```
 
-ModelView でコンテンツを置き、ハンドル hub まわりにツイストして `handle.up` をワールド up の平面投影に揃えます。
+ModelView でコンテンツを置き、ハンドル hub まわりにツイストして `handle.up` をワールド up の平面投影に揃えます。pitch の既定は `PreserveFromCalibration`（CG の pitch を真として残す）です。HMD 上で車が前傾・後傾して見えないようにしたい場合は `ContentPitchMode.LevelToHorizon` を渡してください。
 
 典型的なシーン:
 

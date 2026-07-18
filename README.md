@@ -72,9 +72,17 @@ RigCalibrationOffset.ApplyContentRootAlignment(
     vehicleRoot,   // content root (usually cgHandle.parent)
     cgHandle,
     out ContentRootAlignmentResult align);
+
+// Optional: also zero world pitch of handle.forward (car nose level to horizon)
+RigCalibrationOffset.ApplyContentRootAlignment(
+    result.ModelView,
+    vehicleRoot,
+    cgHandle,
+    ContentPitchMode.LevelToHorizon,
+    out align);
 ```
 
-This places the content from ModelView, then twists about the handle hub so `handle.up` matches world up on the wheel plane.
+This places the content from ModelView, then twists about the handle hub so `handle.up` matches world up on the wheel plane. Default pitch mode is `PreserveFromCalibration` (keep CG pitch as truth). Pass `ContentPitchMode.LevelToHorizon` if the car should not appear nose-up / nose-down in the HMD.
 
 Typical scene:
 

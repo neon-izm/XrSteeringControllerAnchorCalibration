@@ -2,8 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using NUnit.Framework;
-using UnityEditor.PackageManager;
+using UnityEditor;
 using UnityEngine;
+using PackageInfo = UnityEditor.PackageManager.PackageInfo;
 using XrSteeringControllerAnchorCalibration;
 
 namespace XrSteeringControllerAnchorCalibration.Tests
@@ -53,13 +54,30 @@ namespace XrSteeringControllerAnchorCalibration.Tests
             }
         }
 
+        const string FixtureAnchorGuid = "310e2904b63ba3947875dda4c5d396f3";
+
         public static string FixturesDirectory
         {
             get
             {
-                var info = PackageInfo.FindForAssembly(typeof(CalibrationSessionFixture).Assembly);
-                Assert.That(info, Is.Not.Null, "PackageInfo missing for test assembly");
-                return Path.Combine(info.resolvedPath, "Tests", "Editor", "Fixtures");
+                var assetPath = AssetDatabase.GUIDToAssetPath(FixtureAnchorGuid);
+                Assert.That(assetPath, Is.Not.Empty, "Fixture anchor asset was not found");
+
+                var package = PackageInfo.FindForAssetPath(assetPath);
+                string directory;
+                if (package != null)
+                {
+                    var relative = assetPath.Substring(package.assetPath.Length).TrimStart('/');
+                    directory = Path.GetDirectoryName(Path.Combine(package.resolvedPath, relative));
+                }
+                else
+                {
+                    var projectRoot = Path.GetDirectoryName(Application.dataPath);
+                    directory = Path.GetDirectoryName(Path.Combine(projectRoot, assetPath));
+                }
+
+                Assert.That(Directory.Exists(directory), Is.True, $"Fixtures directory missing: {directory}");
+                return directory;
             }
         }
 

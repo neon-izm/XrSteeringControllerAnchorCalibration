@@ -4,14 +4,14 @@ Unity package that estimates a rigid **ModelView** (HMD tracking space → CG ha
 
 Designed for **VR-HMD** tracking spaces where **`Vector3.up` is true world up** (gravity / IMU). That fact pins handle roll without using head pitch/roll.
 
-Version **0.6.0**
+Version **0.7.0**
 
 ## Install
 
 **Window > Package Manager > + > Add package from git URL...**
 
 ```
-https://github.com/neon-izm/XrSteeringControllerAnchorCalibration.git?path=Packages/com.neon-izm.xr-steering-controller-anchor-calibration
+https://github.com/neon-izm/XrSteeringControllerAnchorCalibration.git?path=/Assets/XrSteeringControllerAnchorCalibration#v0.7.0
 ```
 
 Or in `Packages/manifest.json`:
@@ -19,10 +19,12 @@ Or in `Packages/manifest.json`:
 ```json
 {
   "dependencies": {
-    "com.neon-izm.xr-steering-controller-anchor-calibration": "https://github.com/neon-izm/XrSteeringControllerAnchorCalibration.git?path=Packages/com.neon-izm.xr-steering-controller-anchor-calibration#v0.6.0"
+    "com.neon-izm.xr-steering-controller-anchor-calibration": "https://github.com/neon-izm/XrSteeringControllerAnchorCalibration.git?path=/Assets/XrSteeringControllerAnchorCalibration#v0.7.0"
   }
 }
 ```
+
+Tags through **v0.6.0** still use the previous path: `?path=Packages/com.neon-izm.xr-steering-controller-anchor-calibration#v0.6.0`.
 
 ## Requirements
 
@@ -97,17 +99,18 @@ Scene
 
 ## Sample
 
-Import **Calibration Sample** from Package Manager, or open `Assets/CalibrationSample/CalibrationSample.unity` in this repo.
+Open `Assets/CalibrationSample/CalibrationSample.unity` in this repo. The sample sits beside the library and is outside the UPM `path`, so a git install does not include it.
 
 Inspector flow: Generate Sample Points → Run Calibration → Clear.
 
 ## Layout
 
 ```
-Packages/com.neon-izm.xr-steering-controller-anchor-calibration/
-├── Runtime/       # AnchorCalibration, RigCalibrationOffset, circle fitting
-├── Tests/Editor/  # Edit Mode tests (+ device session fixtures)
-└── Samples~/      # Calibration Sample
+Assets/
+├── XrSteeringControllerAnchorCalibration/   # UPM path
+│   ├── Runtime/       # AnchorCalibration, RigCalibrationOffset, circle fitting
+│   └── Tests/Editor/  # Edit Mode tests (+ device session fixtures)
+└── CalibrationSample/                       # sample scene for this repo
 ```
 
 ## Tests

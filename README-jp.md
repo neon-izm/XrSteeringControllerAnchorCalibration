@@ -4,16 +4,16 @@ HMD のハンドトラッキング軌跡（部分円弧）、既知の CG ハン
 
 **VR-HMD** 向けで、トラッキング空間の **`Vector3.up` が真上**（重力 / IMU）であることを前提にハンドル roll を固定します。頭の pitch/roll は使いません。
 
-バージョン **0.6.0**
+バージョン **0.7.0**
 
-UPM 構成は [uOSC](https://github.com/hecomi/uOSC) を参考にしています。
+ライブラリとサンプルは同一 Unity プロジェクトに同居させ、配布は [UnityScreenNavigator](https://github.com/Haruma-K/UnityScreenNavigator) と同じく `Assets` 配下の相対パスを UPM で指定します。
 
 ## インストール
 
 **Window > Package Manager > + > Add package from git URL...**
 
 ```
-https://github.com/neon-izm/XrSteeringControllerAnchorCalibration.git?path=Packages/com.neon-izm.xr-steering-controller-anchor-calibration
+https://github.com/neon-izm/XrSteeringControllerAnchorCalibration.git?path=/Assets/XrSteeringControllerAnchorCalibration#v0.7.0
 ```
 
 または `Packages/manifest.json`:
@@ -21,10 +21,12 @@ https://github.com/neon-izm/XrSteeringControllerAnchorCalibration.git?path=Packa
 ```json
 {
   "dependencies": {
-    "com.neon-izm.xr-steering-controller-anchor-calibration": "https://github.com/neon-izm/XrSteeringControllerAnchorCalibration.git?path=Packages/com.neon-izm.xr-steering-controller-anchor-calibration#v0.6.0"
+    "com.neon-izm.xr-steering-controller-anchor-calibration": "https://github.com/neon-izm/XrSteeringControllerAnchorCalibration.git?path=/Assets/XrSteeringControllerAnchorCalibration#v0.7.0"
   }
 }
 ```
+
+**v0.6.0** までのタグは旧パスのままです: `?path=Packages/com.neon-izm.xr-steering-controller-anchor-calibration#v0.6.0`。
 
 ## 動作要件
 
@@ -99,17 +101,18 @@ Scene
 
 ## サンプル
 
-Package Manager から **Calibration Sample** を Importするか、本リポジトリの `Assets/CalibrationSample/CalibrationSample.unity` を開いてください。
+本リポジトリの `Assets/CalibrationSample/CalibrationSample.unity` を開いてください。サンプルはライブラリの隣にあり、UPM の `path` の外なので Git インストールには含まれません。
 
 Inspector: Generate Sample Points → Run Calibration → Clear
 
 ## 構成
 
 ```
-Packages/com.neon-izm.xr-steering-controller-anchor-calibration/
-├── Runtime/       # AnchorCalibration, RigCalibrationOffset, 円フィット
-├── Tests/Editor/  # Edit Mode テスト（実機セッション fixtures 含む）
-└── Samples~/      # Calibration Sample
+Assets/
+├── XrSteeringControllerAnchorCalibration/   # UPM の path
+│   ├── Runtime/       # AnchorCalibration, RigCalibrationOffset, 円フィット
+│   └── Tests/Editor/  # Edit Mode テスト（実機セッション fixtures 含む）
+└── CalibrationSample/                       # このリポジトリで開くサンプル
 ```
 
 ## テスト
